@@ -3,7 +3,7 @@ import { parseContent } from '../core/text';
 import { emptyOverrides, parseTypeOverrides, type TypeOverrides } from '../core/types';
 import type { LogseqLike } from './api';
 
-export const BLOCKS_QUERY = `[:find (pull ?b [:block/uuid :block/content :block/pre-block?
+export const BLOCKS_QUERY = `[:find (pull ?b [:db/id :block/uuid :block/content :block/pre-block?
   {:block/page [:block/name :block/original-name :block/journal-day]}
   {:block/path-refs [:block/name]}])
  :where [?b :block/properties ?p] [(not= ?p {})]]`;
@@ -15,7 +15,9 @@ function pick(o: any, ...names: string[]): any {
 }
 
 export function toSourceBlock(raw: any): SourceBlock | null {
-  const uuid = pick(raw, 'uuid', 'block/uuid');
+  const rawUuid = pick(raw, 'uuid', 'block/uuid');
+  // Normally a string; some call paths hand back a UUID object.
+  const uuid = typeof rawUuid === 'string' ? rawUuid : rawUuid != null ? String(rawUuid.uuid ?? rawUuid) : undefined;
   const content = pick(raw, 'content', 'block/content');
   if (typeof uuid !== 'string' || typeof content !== 'string') return null;
   const page = pick(raw, 'page', 'block/page') ?? {};
@@ -29,6 +31,7 @@ export function toSourceBlock(raw: any): SourceBlock | null {
     journalDay: pick(page, 'journal-day', 'journalDay', 'block/journal-day') ?? null,
     pathRefs: refs.map((r) => String(pick(r, 'name', 'block/name') ?? '').toLowerCase()).filter(Boolean),
     preBlock: !!pick(raw, 'pre-block?', 'preBlock?', 'preBlock', 'block/pre-block?'),
+    seq: Number(pick(raw, 'id', 'db/id') ?? 0),
   };
 }
 
@@ -39,9 +42,12 @@ export async function fetchBlocks(api: LogseqLike): Promise<SourceBlock[]> {
   } catch (e) {
     throw new Error('Could not read blocks from the Logseq database.', { cause: e });
   }
-  return (res ?? [])
-    .map((r: any) => toSourceBlock(Array.isArray(r) ? r[0] : r))
-    .filter((b: SourceBlock | null): b is SourceBlock => b !== null);
+  const all: any[] = res ?? [];
+  const blocks = all
+    .map((r) => toSourceBlock(Array.isArray(r) ? r[0] : r))
+    .filter((b): b is SourceBlock => b !== null);
+  if (blocks.length < all.length) console.warn(`[dataquery] skipped ${all.length - blocks.length} blocks without uuid or content`, all.find((r) => !toSourceBlock(Array.isArray(r) ? r[0] : r)));
+  return blocks;
 }
 
 export async function fetchTypeOverrides(api: LogseqLike, typesPage: string): Promise<TypeOverrides> {
@@ -55,30 +61,40 @@ export async function fetchTypeOverrides(api: LogseqLike, typesPage: string): Pr
   return parseTypeOverrides(parseContent(String(tree[0].content ?? '')).props);
 }
 
-/** The macro's page and the uuids under its parent block (or the whole page at top level). */
-export async function fetchScope(api: LogseqLike, macroUuid: string): Promise<{ macroPage: string; hereIds: Set<string> }> {
+export interface Scope {
+  macroPage: string;
+  /** Blocks under the macro's parent, or the whole page when the macro is top level. */
+  hereIds: Set<string>;
+  /** Outline position of every block on the macro's page. */
+  order: Map<string, number>;
+}
+
+/** One walk of the macro's page gives both the `here` set and the outline order. */
+export async function fetchScope(api: LogseqLike, macroUuid: string): Promise<Scope> {
   let macro: any;
   let page: any;
+  let tree: any[] | null;
   try {
     macro = await api.Editor.getBlock(macroUuid);
     page = macro ? await api.Editor.getPage(macro.page.id) : null;
+    tree = page ? await api.Editor.getPageBlocksTree(page.originalName ?? page.name) : null;
   } catch (e) {
-    throw new Error('Could not read the query block.', { cause: e });
+    throw new Error('Could not read the page around the query.', { cause: e });
   }
   if (!macro || !page) throw new Error(`The query block ${macroUuid} was not found.`);
+  const order = new Map<string, number>();
   const hereIds = new Set<string>();
-  const walk = (bs: any[] | null | undefined) => {
+  const topLevel = macro.parent.id === macro.page.id;
+  const walk = (bs: any[] | null | undefined, inside: boolean) => {
     for (const b of bs ?? []) {
       if (!b || typeof b !== 'object' || Array.isArray(b)) continue;
-      if (typeof b.uuid === 'string') hereIds.add(b.uuid);
-      walk(b.children);
+      if (typeof b.uuid === 'string') {
+        order.set(b.uuid, order.size);
+        if (inside) hereIds.add(b.uuid);
+      }
+      walk(b.children, inside || b.id === macro.parent.id);
     }
   };
-  try {
-    if (macro.parent.id === macro.page.id) walk(await api.Editor.getPageBlocksTree(page.originalName ?? page.name));
-    else walk((await api.Editor.getBlock(macro.parent.id, { includeChildren: true }))?.children);
-  } catch (e) {
-    throw new Error('Could not read the blocks around the query.', { cause: e });
-  }
-  return { macroPage: String(page.name ?? '').toLowerCase(), hereIds };
+  walk(tree, topLevel);
+  return { macroPage: String(page.name ?? '').toLowerCase(), hereIds, order };
 }

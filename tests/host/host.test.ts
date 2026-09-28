@@ -23,7 +23,7 @@ const graph = () =>
 
 describe('collect', () => {
   it('normalises the key spellings Logseq may return', () => {
-    const want = { uuid: 'u', content: 'k:: v', page: 'p', pageTitle: 'P', journalDay: 1, pathRefs: ['x'], preBlock: true };
+    const want = { uuid: 'u', content: 'k:: v', page: 'p', pageTitle: 'P', journalDay: 1, pathRefs: ['x'], preBlock: true, seq: 0 };
     expect(toSourceBlock({ uuid: 'u', content: 'k:: v', 'preBlock?': true, page: { name: 'P', originalName: 'P', journalDay: 1 }, pathRefs: [{ name: 'X' }] })).toEqual(want);
     expect(toSourceBlock({ uuid: 'u', content: 'k:: v', 'pre-block?': true, page: { name: 'P', 'original-name': 'P', 'journal-day': 1 }, 'path-refs': [{ name: 'X' }] })).toEqual(want);
     expect(toSourceBlock({ content: 'no uuid' })).toBeNull();
@@ -36,6 +36,13 @@ describe('collect', () => {
   it('here = whole page when the macro is top level', async () => {
     const s = await fetchScope(graph(), 'z');
     expect([...s.hereIds].sort()).toEqual(['a', 'b', 'h', 'm', 'z']);
+  });
+  it('returns the outline order of the whole page', async () => {
+    const s = await fetchScope(graph(), 'm');
+    expect([...s.order.keys()]).toEqual(['h', 'm', 'a', 'b', 'z']);
+  });
+  it('accepts a UUID object and keeps the database id', () => {
+    expect(toSourceBlock({ id: 42, uuid: { uuid: 'u' }, content: 'k:: v', page: { name: 'p' } })).toMatchObject({ uuid: 'u', seq: 42 });
   });
   it('reads type overrides and their warnings', async () => {
     const ov = await fetchTypeOverrides(graph(), 'dataquery/types');
@@ -116,6 +123,23 @@ describe('InlineViews', () => {
     provide.mockClear();
     await views.refreshAll();
     expect(provide).not.toHaveBeenCalled();
+  });
+  it('a slow older render does not overwrite a newer one', async () => {
+    const real = new Engine(graph(), () => 'dataquery/types');
+    const done = await real.evaluate('sort gre', 'm');
+    let releaseOld!: () => void;
+    const evaluate = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((r) => (releaseOld = () => r({ ...done, result: { ...done.result!, rows: [] } }))))
+      .mockImplementationOnce(async () => done);
+    const provide = vi.fn();
+    const views = new InlineViews({ evaluate } as unknown as Engine, provide, () => true);
+    const first = views.show('s', 'm', 'sort gre');
+    await views.refreshAll();
+    releaseOld();
+    await first;
+    expect(provide).toHaveBeenCalledTimes(1);
+    expect(provide.mock.calls[0][1]).toContain('2 rows');
   });
   it('shows failures inside the view instead of throwing', async () => {
     const api = graph();

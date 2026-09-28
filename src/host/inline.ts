@@ -3,7 +3,7 @@ import { renderInline } from '../core/view';
 import { errorText } from './actions';
 import type { Engine } from './engine';
 
-interface SlotInfo { uuid: string; dsl: string }
+interface SlotInfo { uuid: string; dsl: string; gen: number }
 
 /** Tracks rendered macro slots so DB changes can re-render them. */
 export class InlineViews {
@@ -16,7 +16,7 @@ export class InlineViews {
   ) {}
 
   async show(slot: string, uuid: string, dsl: string): Promise<void> {
-    this.slots.set(slot, { uuid, dsl });
+    this.slots.set(slot, { uuid, dsl, gen: 0 });
     await this.render(slot);
   }
 
@@ -28,7 +28,9 @@ export class InlineViews {
   }
 
   private async render(slot: string): Promise<void> {
-    const { uuid, dsl } = this.slots.get(slot)!;
+    const info = this.slots.get(slot)!;
+    const gen = ++info.gen;
+    const { uuid, dsl } = info;
     let html: string;
     try {
       html = renderInline({ macroUuid: uuid, dsl, ...(await this.engine.evaluate(dsl, uuid)) });
@@ -36,6 +38,7 @@ export class InlineViews {
       console.error('[dataquery] could not render the query view', e);
       html = renderInline({ macroUuid: uuid, dsl, parsed: parseDsl(dsl), error: errorText(e) });
     }
-    this.provide(slot, html);
+    // A slower render that started on older data must not overwrite a newer one.
+    if (this.slots.get(slot) === info && info.gen === gen) this.provide(slot, html);
   }
 }

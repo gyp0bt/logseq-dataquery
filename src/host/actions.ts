@@ -13,8 +13,16 @@ export function errorText(e: unknown): string {
   return parts[0] + parts.slice(1).map((p) => ` (cause: ${p})`).join('');
 }
 
+async function getBlock(api: LogseqLike, uuid: string): Promise<any> {
+  try {
+    return await api.Editor.getBlock(uuid);
+  } catch (e) {
+    throw new Error('Could not read the block from Logseq.', { cause: e });
+  }
+}
+
 export async function readMacro(api: LogseqLike, macroUuid: string): Promise<{ macro: string; dsl: string }> {
-  const block = await api.Editor.getBlock(macroUuid);
+  const block = await getBlock(api, macroUuid);
   const macro = block ? findMacro(String(block.content)) : null;
   if (!macro) throw new Error('The query block no longer contains a data query.');
   return { macro, dsl: dslFromMacro(macro) };
@@ -22,7 +30,7 @@ export async function readMacro(api: LogseqLike, macroUuid: string): Promise<{ m
 
 /** Rewrite the macro; refuses if the block no longer holds `oldMacro` (edited elsewhere). */
 export async function saveDsl(api: LogseqLike, macroUuid: string, oldMacro: string, dsl: string): Promise<string> {
-  const block = await api.Editor.getBlock(macroUuid);
+  const block = await getBlock(api, macroUuid);
   if (!block) throw new Error('The query block no longer exists.');
   const next = replaceMacro(String(block.content), oldMacro, dsl);
   if (next === null) throw new Error('The query block was edited after this view opened. Close the panel, reopen it, and try again.');
@@ -52,8 +60,14 @@ export async function setType(api: LogseqLike, typesPage: string, key: string, t
 }
 
 export async function jumpTo(api: LogseqLike, uuid: string): Promise<void> {
-  const block = await api.Editor.getBlock(uuid);
+  const block = await getBlock(api, uuid);
   if (!block) throw new Error('That block no longer exists.');
-  const page = await api.Editor.getPage(block.page.id);
+  let page: any;
+  try {
+    page = await api.Editor.getPage(block.page.id);
+  } catch (e) {
+    throw new Error('Could not read the page of that block.', { cause: e });
+  }
+  if (!page) throw new Error('The page of that block no longer exists.');
   api.Editor.scrollToBlockInPage(page.originalName ?? page.name, uuid);
 }
