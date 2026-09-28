@@ -1,7 +1,87 @@
 import '@logseq/libs';
+import { joinMacroArgs, parseDsl, printDsl } from './core/dsl';
+import { MACRO_TYPE } from './core/macroText';
+import { errorText, jumpTo, readMacro, saveDsl } from './host/actions';
+import type { LogseqLike } from './host/api';
+import { Engine } from './host/engine';
+import { InlineViews } from './host/inline';
+import inlineCss from './style/inline.css?raw';
+import tokensCss from './style/tokens.css?raw';
+
+const DEFAULT_TYPES_PAGE = 'dataquery/types';
+
+const api = logseq as unknown as LogseqLike;
+const typesPage = () => String(logseq.settings?.typesPage || DEFAULT_TYPES_PAGE);
+
+function report(e: unknown): void {
+  console.error('[dataquery]', e);
+  void logseq.UI.showMsg(errorText(e), 'error');
+}
+
+async function toggleLabels(uuid: string): Promise<void> {
+  const { macro, dsl } = await readMacro(api, uuid);
+  const parsed = parseDsl(dsl);
+  if (!parsed.ok) throw new Error(`Fix the query before toggling labels: ${parsed.error.message}`);
+  const plot = parsed.query.plot;
+  if (plot?.kind !== 'scatter') return;
+  plot.labels = !plot.labels;
+  await saveDsl(api, uuid, macro, printDsl(parsed.query));
+}
 
 async function main(): Promise<void> {
-  console.info('[dataquery] loaded');
+  logseq.useSettingsSchema([
+    {
+      key: 'typesPage',
+      type: 'string',
+      default: DEFAULT_TYPES_PAGE,
+      title: 'Types page',
+      description: 'Page whose properties set column types, e.g. seed:: category or score-*:: ratio.',
+    },
+  ]);
+  const engine = new Engine(api, typesPage);
+  logseq.provideStyle(tokensCss + '\n' + inlineCss);
+
+  const views = new InlineViews(
+    engine,
+    (slot, html) => logseq.provideUI({ key: `dataquery-${slot}`, slot, reset: true, template: html }),
+    (slot) => {
+      try {
+        return !!parent.document.getElementById(slot);
+      } catch (e) {
+        console.warn('[dataquery] cannot inspect the Logseq window; keeping the view', e);
+        return true;
+      }
+    },
+  );
+
+  logseq.App.onMacroRendererSlotted(({ slot, payload }) => {
+    const [type, ...rest] = (payload.arguments ?? []) as string[];
+    if (type?.trim() !== MACRO_TYPE) return;
+    void views.show(slot, payload.uuid, joinMacroArgs(rest));
+  });
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  logseq.DB.onChanged(() => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      engine.invalidate();
+      void views.refreshAll();
+    }, 300);
+  });
+
+  const openPanel = async (_uuid: string) => {
+    await logseq.UI.showMsg('The panel is not available yet.', 'warning');
+  };
+
+  logseq.provideModel({
+    dqJump: (e: { dataset: { uuid: string } }) => jumpTo(api, e.dataset.uuid).catch(report),
+    dqOpen: (e: { dataset: { macro: string } }) => openPanel(e.dataset.macro).catch(report),
+    dqToggleLabels: (e: { dataset: { macro: string } }) => toggleLabels(e.dataset.macro).catch(report),
+  });
+
+  logseq.Editor.registerSlashCommand('Data query', async () => {
+    await logseq.Editor.insertAtEditingCursor('{{renderer :dataquery}}');
+  });
 }
 
 logseq.ready(main).catch((e) => console.error('[dataquery] failed to start', e));
