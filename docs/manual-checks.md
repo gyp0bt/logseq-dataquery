@@ -5,7 +5,7 @@ Build: `npm install && npm run build`. Logseq → Settings → Advanced → Deve
 ## M1 inline view
 - [ ] Under a heading block, add a child `/Data query`. A table of the sibling property blocks appears.
 - [ ] Edit it to `{{renderer :dataquery, where type = run | sort gre-thin | plot scatter x=gre-thin y=gre-thick color=seed}}` — chart and sorted table render; numbers sort numerically.
-- [ ] `where combine in (none, mean)` works (comma inside the macro).
+- [ ] `where combine in (none, mean)` and `where note = "a,b"` work (commas inside the macro; the view reads the block text, not the split arguments).
 - [ ] `in [[work/nsb]] | where type = run | merge by run` works (link inside the macro); duplicated runs appear once, conflicts show ⚠.
 - [ ] Add a `dataquery/types` page with `gre-*:: ratio` and `seed:: category` as page properties; the 1.00 line and green/red cells appear.
 - [ ] Click a table link and a chart point → Logseq scrolls to the block.
@@ -23,3 +23,4 @@ Build: `npm install && npm run build`. Logseq → Settings → Advanced → Deve
 - [ ] Column header click sorts; the type picker writes `key:: type` into the types page and the view re-types.
 - [ ] Save to page rewrites the macro; editing the macro block meanwhile and then saving shows the "edited after this view opened" error.
 - [ ] Panel follows light/dark theme.
+- [ ] Rows appear in the order written in the outline, not shuffled.

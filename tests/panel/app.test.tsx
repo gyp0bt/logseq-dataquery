@@ -77,17 +77,37 @@ describe('panel App', () => {
     await screen.findByText('2 of 3 rows');
   });
 
-  it('Save to page sends the current DSL; Revert restores the session DSL', async () => {
+  it('Save to page sends the current DSL; Revert goes back to what the page holds', async () => {
     const user = userEvent.setup();
     const d = deps();
     render(<App session={session} deps={d} tick={0} />);
     await screen.findByText('3 of 3 rows');
     await user.click(screen.getByRole('button', { name: 'Page' }));
     await user.click(screen.getByRole('button', { name: 'Save to page' }));
-    expect(d.save).toHaveBeenCalledWith('m', session.macro, 'in page | where combine in (none, mean) | sort gre');
+    const saved = 'in page | where combine in (none, mean) | sort gre';
+    expect(d.save).toHaveBeenCalledWith('m', session.macro, saved);
     await screen.findByText('Saved to page.');
+    await user.click(screen.getByRole('button', { name: 'Here' }));
     await user.click(screen.getByRole('button', { name: 'Revert' }));
-    expect(queryBox().value).toBe(session.dsl);
+    expect(queryBox().value).toBe(saved);
+    await user.click(screen.getByRole('button', { name: 'Save to page' }));
+    expect(d.save).toHaveBeenLastCalledWith('m', `{{renderer :dataquery, ${saved}}}`, saved);
+  });
+
+  it('saves typed text that was not applied yet, and refuses invalid text', async () => {
+    const user = userEvent.setup();
+    const d = deps();
+    render(<App session={session} deps={d} tick={0} />);
+    await screen.findByText('3 of 3 rows');
+    await user.clear(queryBox());
+    await user.type(queryBox(), 'where gre <');
+    await user.click(screen.getByRole('button', { name: 'Save to page' }));
+    expect(d.save).not.toHaveBeenCalled();
+    expect(screen.getByText(/Missing value after '<'/)).toBeTruthy();
+    await user.type(queryBox(), ' 1');
+    await user.click(screen.getByRole('button', { name: 'Save to page' }));
+    expect(d.save).toHaveBeenCalledWith('m', session.macro, 'where gre < 1');
+    await screen.findByText('1 of 3 rows');
   });
 
   it('save failures are reported, not swallowed', async () => {

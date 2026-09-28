@@ -55,10 +55,18 @@ async function main(): Promise<void> {
     },
   );
 
-  logseq.App.onMacroRendererSlotted(({ slot, payload }) => {
+  logseq.App.onMacroRendererSlotted(async ({ slot, payload }) => {
     const [type, ...rest] = (payload.arguments ?? []) as string[];
     if (type?.trim() !== MACRO_TYPE) return;
-    void views.show(slot, payload.uuid, joinMacroArgs(rest));
+    // Read the query from the block text: Logseq's argument splitting loses spacing inside quotes.
+    let dsl: string;
+    try {
+      dsl = (await readMacro(api, payload.uuid)).dsl;
+    } catch (e) {
+      console.warn('[dataquery] could not read the macro text; using the macro arguments', e);
+      dsl = joinMacroArgs(rest);
+    }
+    await views.show(slot, payload.uuid, dsl);
   });
 
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -71,15 +79,19 @@ async function main(): Promise<void> {
     }, 300);
   });
 
+  const closePanel = () => {
+    logseq.hideMainUI();
+    panel.close();
+  };
   const panel = mountPanel(document.getElementById('app')!, {
     evaluate: (dsl, uuid) => engine.evaluate(dsl, uuid),
     save: (uuid, macro, dsl) => saveDsl(api, uuid, macro, dsl),
     setType: (key, type) => setType(api, typesPage(), key, type),
     jump: async (uuid) => {
-      logseq.hideMainUI();
+      closePanel();
       await jumpTo(api, uuid);
     },
-    close: () => logseq.hideMainUI(),
+    close: () => closePanel(),
     report,
   });
   const openPanel = async (uuid: string) => {
@@ -88,7 +100,7 @@ async function main(): Promise<void> {
     logseq.showMainUI({ autoFocus: true });
   };
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') logseq.hideMainUI();
+    if (e.key === 'Escape') closePanel();
   });
 
   const applyTheme = (mode: string) => {
@@ -96,6 +108,12 @@ async function main(): Promise<void> {
   };
   applyTheme((await logseq.App.getUserConfigs()).preferredThemeMode);
   logseq.App.onThemeModeChanged(({ mode }) => applyTheme(mode));
+
+  logseq.onSettingsChanged(() => {
+    engine.invalidate();
+    void views.refreshAll();
+    panel.refresh();
+  });
 
   logseq.provideModel({
     dqJump: (e: { dataset: { uuid: string } }) => jumpTo(api, e.dataset.uuid).catch(report),

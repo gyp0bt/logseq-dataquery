@@ -19,6 +19,8 @@ export function App({ session, deps, tick }: { session: Session; deps: PanelDeps
   const [error, setError] = useState<DslError | null>(() => initial(session.dsl).error);
   const [ev, setEv] = useState<Evaluation | null>(null);
   const [macro, setMacro] = useState(session.macro);
+  // What the page holds now; Revert goes back here, not to the text the panel opened with.
+  const [pageDsl, setPageDsl] = useState(session.dsl);
   const [status, setStatus] = useState('');
 
   useEffect(() => {
@@ -47,17 +49,33 @@ export function App({ session, deps, tick }: { session: Session; deps: PanelDeps
     } else setError(p.error);
   };
   const save = async () => {
+    // Typed-but-unapplied text is what the user sees, so it is what gets saved.
+    let q = query;
+    if (text !== printDsl(query)) {
+      const p = parseDsl(text);
+      if (!p.ok) {
+        setError(p.error);
+        setStatus('');
+        return;
+      }
+      q = p.query;
+      setQuery(q);
+      setError(null);
+    }
     try {
-      setMacro(await deps.save(session.uuid, macro, printDsl(query)));
+      const dsl = printDsl(q);
+      setMacro(await deps.save(session.uuid, macro, dsl));
+      setPageDsl(dsl);
+      setText(dsl);
       setStatus('Saved to page.');
     } catch (e) {
       deps.report(e);
     }
   };
   const revert = () => {
-    const i = initial(session.dsl);
+    const i = initial(pageDsl);
     setQuery(i.query);
-    setText(session.dsl);
+    setText(pageDsl);
     setError(i.error);
     setStatus('Reverted to the query on the page.');
   };
@@ -69,7 +87,7 @@ export function App({ session, deps, tick }: { session: Session; deps: PanelDeps
         <header className="dqp-top">
           <div className="dqp-row">
             <strong className="dqp-brand">Data query</strong>
-            <ScopeSwitch scope={query.scope} onChange={(scope) => update({ ...query, scope })} />
+            <ScopeSwitch key={query.scope.kind === 'ref' ? query.scope.page : ''} scope={query.scope} onChange={(scope) => update({ ...query, scope })} />
             <span className="dqp-spacer" />
             <button type="button" className="dqp-btn" onClick={revert}>Revert</button>
             <button type="button" className="dqp-btn dqp-primary" onClick={save}>Save to page</button>

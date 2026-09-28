@@ -27,10 +27,16 @@ export function mountPanel(el: HTMLElement, deps: PanelDeps) {
       nonce++;
       draw();
     },
-    /** Re-run the current query after the graph changed. */
+    /** Re-run the current query after the graph changed; nothing to do while closed. */
     refresh() {
+      if (!session) return;
       tick++;
       draw();
+    },
+    /** Forget the session so a hidden panel stops querying. */
+    close() {
+      session = null;
+      root.render(null);
     },
   };
 }

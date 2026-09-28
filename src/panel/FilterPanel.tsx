@@ -3,7 +3,7 @@ import { cardsToWhere, newCard, whereToCards, type Card } from '../core/cards';
 import { printCond, type Cond, type Query } from '../core/dsl';
 import type { QueryResult } from '../core/query';
 import type { Row } from '../core/rows';
-import { compareValues, toList, toNumber, type ValueType } from '../core/types';
+import { compareValues, isNumberText, toList, toNumber, valuesEqual, type ValueType } from '../core/types';
 
 interface Props { query: Query; result?: QueryResult; onChange(where: Cond[]): void }
 
@@ -76,7 +76,7 @@ function RangeBody({ card, type, scoped, rows, onChange }: { card: RangeCard; ty
   const on = new Set(rows.map((r) => r.id));
   const edit = (side: 'min' | 'max', text: string) => {
     const t = text.trim();
-    if (t && isNaN(Number(t))) return;
+    if (t && !isNumberText(t)) return;
     if (t === (card[side]?.value ?? '')) return;
     const next: RangeCard = { ...card };
     if (!t) delete next[side];
@@ -118,12 +118,16 @@ function ValuesBody({ card, type, scoped, onChange }: { card: Extract<Card, { ki
     if (v !== undefined) counts.set(v, (counts.get(v) ?? 0) + 1);
   }
   const domain = [...counts.keys()].sort((a, b) => compareValues(type, a, b));
-  const checked = (v: string) => card.values.length === 0 || card.values.includes(v);
+  const selected = (v: string) => card.values.some((x) => valuesEqual(type, v, x));
+  const checked = (v: string) => card.values.length === 0 || selected(v);
+  // Chosen values absent from this scope stay in the condition rather than vanishing on the next click.
+  const outside = card.values.filter((x) => !domain.some((d) => valuesEqual(type, d, x)));
   const toggle = (v: string) => {
     const now = domain.filter(checked);
     const next = now.includes(v) ? now.filter((x) => x !== v) : [...now, v];
-    if (next.length === 0) return;
-    onChange({ ...card, values: next.length === domain.length ? [] : domain.filter((x) => next.includes(x)) });
+    if (next.length === 0 && outside.length === 0) return;
+    const all = next.length === domain.length && outside.length === 0;
+    onChange({ ...card, values: all ? [] : [...outside, ...domain.filter((x) => next.includes(x))] });
   };
   return (
     <div className="dqp-checks">
@@ -140,15 +144,16 @@ function ValuesBody({ card, type, scoped, onChange }: { card: Extract<Card, { ki
 
 function HasBody({ card, scoped, onChange }: { card: Extract<Card, { kind: 'has' }>; scoped: Row[]; onChange(c: Card): void }) {
   const elems = [...new Set(scoped.flatMap((r) => toList(r.values[card.key]) ?? []))].sort((a, b) => a - b).map(String);
+  const has = (v: string) => card.values.some((x) => Number(x) === Number(v));
   const toggle = (v: string) =>
-    onChange({ ...card, values: card.values.includes(v) ? card.values.filter((x) => x !== v) : [...card.values, v] });
+    onChange({ ...card, values: has(v) ? card.values.filter((x) => Number(x) !== Number(v)) : [...card.values, v] });
   return (
     <>
       <p className="dqp-hint">Contains all of</p>
       <div className="dqp-checks">
         {elems.map((v) => (
           <label key={v} className="dqp-chk">
-            <input type="checkbox" checked={card.values.includes(v)} onChange={() => toggle(v)} />
+            <input type="checkbox" checked={has(v)} onChange={() => toggle(v)} />
             {v}
           </label>
         ))}
