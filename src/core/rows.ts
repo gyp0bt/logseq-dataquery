@@ -1,5 +1,5 @@
 import { parseContent } from './text';
-import { isNumberText } from './types';
+import { toList } from './types';
 
 /** A block as read from the graph; `page` and `pathRefs` are lower-cased page names. */
 export interface SourceBlock {
@@ -10,6 +10,8 @@ export interface SourceBlock {
   journalDay: number | null;
   pathRefs: string[];
   preBlock: boolean;
+  /** Database id; roughly document order, used when tree position is unknown. */
+  seq: number;
 }
 export interface Source { uuid: string; pageTitle: string; journalDay: number | null }
 export interface Conflict { value: string; pageTitle: string }
@@ -43,17 +45,23 @@ export function comparePriority(a: Source, b: Source): number {
   return a.pageTitle < b.pageTitle ? -1 : a.pageTitle > b.pageTitle ? 1 : 0;
 }
 
-const same = (a: string, b: string) => a === b || (isNumberText(a) && isNumberText(b) && Number(a) === Number(b));
+/** Text that treats `0.2`, `0.20` and `8/16.0`, `8/16` as the same value. */
+export function canonical(v: string): string {
+  const l = toList(v);
+  return l ? l.join('/') : v;
+}
+const same = (a: string, b: string) => canonical(a) === canonical(b);
 
 export function mergeRows(rows: Row[], key: string): Row[] {
   const groups = new Map<string, Row[]>();
   const order: Array<Row | string> = [];
   for (const r of rows) {
-    const k = r.values[key];
-    if (k === undefined) {
+    const raw = r.values[key];
+    if (raw === undefined) {
       order.push(r);
       continue;
     }
+    const k = canonical(raw);
     if (!groups.has(k)) {
       groups.set(k, []);
       order.push(k);

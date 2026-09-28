@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { blockToRow, mergeRows, rowLabel, type Row, type SourceBlock } from '../../src/core/rows';
 
 const block = (uuid: string, content: string, over: Partial<SourceBlock> = {}): SourceBlock => ({
-  uuid, content, page: 'p', pageTitle: 'P', journalDay: null, pathRefs: [], preBlock: false, ...over,
+  uuid, content, page: 'p', pageTitle: 'P', journalDay: null, pathRefs: [], preBlock: false, seq: 0, ...over,
 });
 const row = (b: SourceBlock) => blockToRow(b) as Row;
 
@@ -44,6 +44,14 @@ describe('mergeRows', () => {
   it('numerically equal texts are not conflicts (Review Focus 2)', () => {
     const [m] = mergeRows([older, newer], 'run');
     expect(m.conflicts.seed).toBeUndefined();
+  });
+});
+
+describe('merge key normalisation (Review Focus 2)', () => {
+  it('0.2 and 0.20 are one group; 8/16 and 8/16.0 do not conflict', () => {
+    const out = mergeRows([row(block('x', 'k:: 0.2\np:: 8/16')), row(block('y', 'k:: 0.20\np:: 8/16.0'))], 'k');
+    expect(out).toHaveLength(1);
+    expect(out[0].conflicts).toEqual({});
   });
 });
 

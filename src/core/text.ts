@@ -1,4 +1,4 @@
-const PROP_LINE = /^\s*([A-Za-z0-9_*][A-Za-z0-9_.*-]*)::(?:\s+(.*))?\s*$/;
+const PROP_LINE = /^\s*([^\s:]+)::(?:\s+(.*))?\s*$/;
 
 const BUILTIN_KEYS = new Set([
   'id', 'collapsed', 'heading', 'background-color', 'title', 'alias', 'aliases', 'tags',

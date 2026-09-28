@@ -10,7 +10,7 @@ import { App } from '../../src/panel/App';
 import type { PanelDeps } from '../../src/panel/mount';
 
 const b = (uuid: string, content: string): SourceBlock => ({
-  uuid, content, page: 'day', pageTitle: 'Day', journalDay: 1, pathRefs: [], preBlock: false,
+  uuid, content, page: 'day', pageTitle: 'Day', journalDay: 1, pathRefs: [], preBlock: false, seq: 0,
 });
 const blocks = [
   b('a', 'run:: a\ncombine:: none\ngre:: 1.27\npatch:: 8'),

@@ -1,11 +1,11 @@
 import type { BarPlot, ScatterPlot } from './dsl';
 import { esc } from './html';
-import { rowLabel, type Row } from './rows';
+import { canonical, rowLabel, type Row } from './rows';
 import { compareValues, toNumber, type ValueType } from './types';
 
 export interface LegendItem { label: string; color: string; shape: 'dot' | 'square' | 'dash' | 'none' }
 export interface Chart { html: string; legend: LegendItem[] }
-export interface BarGroup { cat: string; n: number; stats: Array<{ mean: number; min: number; max: number } | null> }
+export interface BarGroup { cat: string; n: number; stats: Array<{ mean: number; min: number; max: number; n: number } | null> }
 
 export const PALETTE_SIZE = 8;
 export const colorFor = (i: number): string => (i < PALETTE_SIZE ? `var(--dq-c${i})` : 'var(--dq-muted)');
@@ -59,6 +59,8 @@ function frame(inner: string, label: string): string {
   return `<svg class="dq-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">${inner}</svg>`;
 }
 
+const catOf = (v: string | undefined) => (v === undefined ? NONE : canonical(v));
+
 const empty = (msg: string): Chart => ({ html: `<p class="dq-empty">${esc(msg)}</p>`, legend: [] });
 
 export function scatterSvg(rows: Row[], plot: ScatterPlot, types: Record<string, ValueType>, mergeBy?: string): Chart {
@@ -91,7 +93,7 @@ export function scatterSvg(rows: Row[], plot: ScatterPlot, types: Record<string,
   const legend: LegendItem[] = [];
   const colorOf = new Map<string, string>();
   if (plot.color) {
-    const cats = sortCats([...new Set(pts.map((p) => p.r.values[plot.color!] ?? NONE))], types[plot.color] ?? 'string');
+    const cats = sortCats([...new Set(pts.map((p) => catOf(p.r.values[plot.color!])))], types[plot.color] ?? 'string');
     cats.forEach((c, i) => {
       colorOf.set(c, colorFor(i));
       legend.push({ label: `${plot.color} = ${c}`, color: colorFor(i), shape: 'dot' });
@@ -100,7 +102,7 @@ export function scatterSvg(rows: Row[], plot: ScatterPlot, types: Record<string,
   const labels = pts.map((p) => rowLabel(p.r, mergeBy));
   const prefix = plot.labels ? commonPrefix(labels) : '';
   pts.forEach((p, i) => {
-    const fill = plot.color ? colorOf.get(p.r.values[plot.color] ?? NONE)! : 'var(--dq-c0)';
+    const fill = plot.color ? colorOf.get(catOf(p.r.values[plot.color]))! : 'var(--dq-c0)';
     const cx = f1(X(p.x));
     const cy = f1(Y(p.y));
     g += `<circle class="dq-pt" cx="${cx}" cy="${cy}" r="5.5" fill="${fill}" data-uuid="${esc(p.r.sources[0].uuid)}" data-on-click="dqJump"><title>${esc(labels[i])}  ${esc(plot.x)}=${esc(p.r.values[plot.x])}  ${esc(plot.y)}=${esc(p.r.values[plot.y])}</title></circle>`;
@@ -114,7 +116,8 @@ export function scatterSvg(rows: Row[], plot: ScatterPlot, types: Record<string,
 export function barGroups(rows: Row[], plot: BarPlot, types: Record<string, ValueType>): BarGroup[] {
   const groups = new Map<string, Row[]>();
   for (const r of rows) {
-    const c = r.values[plot.x] ?? NONE;
+    const v = r.values[plot.x];
+    const c = v === undefined ? NONE : canonical(v);
     if (!groups.has(c)) groups.set(c, []);
     groups.get(c)!.push(r);
   }
@@ -126,7 +129,7 @@ export function barGroups(rows: Row[], plot: BarPlot, types: Record<string, Valu
       stats: plot.ys.map((k) => {
         const v = rs.map((r) => toNumber(r.values[k])).filter((x) => !isNaN(x));
         if (!v.length) return null;
-        return { mean: v.reduce((a, b) => a + b, 0) / v.length, min: Math.min(...v), max: Math.max(...v) };
+        return { mean: v.reduce((a, b) => a + b, 0) / v.length, min: Math.min(...v), max: Math.max(...v), n: v.length };
       }),
     };
   });
@@ -138,7 +141,7 @@ export function barSvg(rows: Row[], plot: BarPlot, types: Record<string, ValueTy
   if (!all.length) return empty(`No rows have numeric ${plot.ys.join(', ')}.`);
   const anyRatio = plot.ys.some((k) => types[k] === 'ratio');
   const lo = Math.min(0, ...all.map((s) => s.min));
-  const hi = Math.max(...all.map((s) => s.max), anyRatio ? 1 : -Infinity);
+  const hi = Math.max(0, ...all.map((s) => s.max), anyRatio ? 1 : -Infinity);
   const ty = niceTicks(lo, hi);
   const [y0, y1] = [ty[0], ty[ty.length - 1]];
   const Y = (v: number) => T + PH - ((v - y0) / (y1 - y0)) * PH;
@@ -154,8 +157,8 @@ export function barSvg(rows: Row[], plot: BarPlot, types: Record<string, ValueTy
       if (!s) return;
       const x = left + j * bw;
       const top = Math.min(Y(s.mean), Y(0));
-      g += `<rect class="dq-bar" x="${f1(x + 1)}" y="${f1(top)}" width="${f1(bw - 2)}" height="${f1(Math.abs(Y(0) - Y(s.mean)))}" fill="${colorFor(j)}"><title>${esc(gr.cat)} ${esc(plot.ys[j])}: mean ${s.mean.toPrecision(4)} (min ${s.min}, max ${s.max}, n=${gr.n})</title></rect>`;
-      if (gr.n >= 2) {
+      g += `<rect class="dq-bar" x="${f1(x + 1)}" y="${f1(top)}" width="${f1(bw - 2)}" height="${f1(Math.abs(Y(0) - Y(s.mean)))}" fill="${colorFor(j)}"><title>${esc(gr.cat)} ${esc(plot.ys[j])}: mean ${s.mean.toPrecision(4)} (min ${s.min}, max ${s.max}, n=${s.n})</title></rect>`;
+      if (s.n >= 2) {
         const m = f1(x + bw / 2);
         const a = f1(x + bw / 2 - 5);
         const b = f1(x + bw / 2 + 5);

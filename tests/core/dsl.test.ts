@@ -65,6 +65,16 @@ describe('parseDsl', () => {
   });
 });
 
+describe('keys and macro safety', () => {
+  it('accepts Unicode and ? keys', () => {
+    expect(ok('where 温度 >= 20 and done? = true').where.map((c) => c.key)).toEqual(['温度', 'done?']);
+  });
+  it('rejects text that would break the macro', () => {
+    expect(err('where a = "}}"')).toEqual({ message: "'}}' would end the macro. Remove it from the query.", col: 11 });
+    expect(err('where a = 1\n| sort a').message).toBe('Write the query on one line.');
+  });
+});
+
 describe('printDsl', () => {
   it('prints canonical text that parses back to the same query', () => {
     const texts = [

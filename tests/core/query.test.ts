@@ -5,7 +5,7 @@ import type { SourceBlock } from '../../src/core/rows';
 import { emptyOverrides, parseTypeOverrides } from '../../src/core/types';
 
 const b = (uuid: string, content: string, over: Partial<SourceBlock> = {}): SourceBlock => ({
-  uuid, content, page: 'day', pageTitle: 'Day', journalDay: 20260928, pathRefs: ['work/nsb'], preBlock: false, ...over,
+  uuid, content, page: 'day', pageTitle: 'Day', journalDay: 20260928, pathRefs: ['work/nsb'], preBlock: false, seq: 0, ...over,
 });
 const q = (t: string): Query => {
   const r = parseDsl(t);
@@ -36,6 +36,22 @@ describe('scope', () => {
   it('here excludes the macro block and outside blocks', () => expect(ids('')).toEqual(['a', 'b', 'c', 'd']));
   it('page', () => expect(ids('in page')).toEqual(['a', 'b', 'c', 'd']));
   it('ref uses path refs, case-insensitively', () => expect(ids('in [[Work/NSB]]')).toEqual(['a', 'b', 'c', 'd']));
+});
+
+describe('row order', () => {
+  it('follows the outline, not the database order', () => {
+    const shuffled = [blocks[3], blocks[1], blocks[4], blocks[2]];
+    const order = new Map(['a', 'b', 'c', 'd'].map((id, i) => [id, i]));
+    expect(runQuery(q(''), { ...ctx, blocks: shuffled, order }).rows.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+  it('without outline positions: newest journal first, then database id', () => {
+    const refs = [
+      b('old2', 'k:: 1', { journalDay: 1, seq: 9 }),
+      b('new', 'k:: 1', { journalDay: 2, seq: 5 }),
+      b('old1', 'k:: 1', { journalDay: 1, seq: 3 }),
+    ];
+    expect(runQuery(q('in [[work/nsb]]'), { ...ctx, blocks: refs }).rows.map((r) => r.id)).toEqual(['new', 'old1', 'old2']);
+  });
 });
 
 describe('where', () => {

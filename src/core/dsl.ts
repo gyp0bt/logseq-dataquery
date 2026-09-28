@@ -23,8 +23,9 @@ class DslSyntaxError extends Error {
   }
 }
 
-const KEY = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
-const PATTERN = /^[A-Za-z0-9_*][A-Za-z0-9_.*-]*$/;
+// Any Logseq property key (Unicode, `done?`), minus characters the DSL itself uses.
+const KEY = /^[^\s<>=!|,()"*:{}[\]]+$/;
+const PATTERN = /^[^\s<>=!|,()":{}[\]]+$/;
 const NUMERIC_OPS: CmpOp[] = ['<', '<=', '>', '>='];
 
 type Piece = { s: string; at: number };
@@ -53,7 +54,7 @@ function splitOn(text: string, sep: RegExp, base: number): Piece[] {
   return out;
 }
 
-const unquote = (s: string) => (/^".*"$/.test(s) ? s.slice(1, -1) : s);
+const unquote = (s: string) => (/^"[\s\S]*"$/.test(s) ? s.slice(1, -1) : s);
 
 function key(s: string, at: number): string {
   if (!KEY.test(s)) throw new DslSyntaxError(`'${s}' is not a property key.`, at);
@@ -72,6 +73,10 @@ export function parseDsl(text: string): ParseResult {
 function parseOrThrow(text: string): Query {
   const q = emptyQuery();
   if (!text.trim()) return q;
+  const brace = text.indexOf('}}');
+  if (brace >= 0) throw new DslSyntaxError("'}}' would end the macro. Remove it from the query.", brace);
+  const nl = text.search(/[\r\n]/);
+  if (nl >= 0) throw new DslSyntaxError('Write the query on one line.', nl);
   const seen = new Set<string>();
   for (const { s, at } of splitOn(text, /\|/, 0)) {
     if (!s) throw new DslSyntaxError("Empty clause between '|'. Remove the extra '|'.", at);

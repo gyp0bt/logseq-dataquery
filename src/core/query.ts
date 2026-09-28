@@ -1,5 +1,5 @@
 import type { Cond, Query, Scope, SortKey } from './dsl';
-import { blockToRow, mergeRows, type Row, type SourceBlock } from './rows';
+import { blockToRow, comparePriority, mergeRows, type Row, type SourceBlock } from './rows';
 import { parseContent } from './text';
 import {
   compareValues, globToRegExp, inferType, resolveType, toList, toNumber, valuesEqual, type TypeOverrides, type ValueType,
@@ -13,6 +13,8 @@ export interface QueryContext {
   macroPage: string;
   /** Blocks under the macro's parent (or the whole page when the macro is top level). */
   hereIds: Set<string>;
+  /** Position of each block of the macro's page in outline order. */
+  order?: Map<string, number>;
 }
 export interface QueryResult {
   /** Rows after scope and merge, before filtering: the panel's filter domains. */
@@ -98,10 +100,20 @@ function referencedKeys(q: Query): string[] {
   return [...new Set(keys)];
 }
 
+/** The database returns blocks in no particular order; restore the order the user wrote them in. */
+function inOutlineOrder(blocks: SourceBlock[], order: Map<string, number> | undefined): SourceBlock[] {
+  return [...blocks].sort((a, b) => {
+    const pa = order?.get(a.uuid);
+    const pb = order?.get(b.uuid);
+    if (pa !== undefined && pb !== undefined) return pa - pb;
+    if (pa !== undefined || pb !== undefined) return pa !== undefined ? -1 : 1;
+    return comparePriority(a, b) || a.seq - b.seq;
+  });
+}
+
 /** scope → merge → where → sort → cols. */
 export function runQuery(q: Query, ctx: QueryContext): QueryResult {
-  let scoped = ctx.blocks
-    .filter((b) => inScope(b, q.scope, ctx))
+  let scoped = inOutlineOrder(ctx.blocks.filter((b) => inScope(b, q.scope, ctx)), ctx.order)
     .map(blockToRow)
     .filter((r): r is Row => r !== null);
   if (q.mergeBy) scoped = mergeRows(scoped, q.mergeBy);

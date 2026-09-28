@@ -22,6 +22,10 @@ describe('parseContent', () => {
   });
 });
 
+describe('unicode keys', () => {
+  it('reads keys in any script', () => expect(parseContent('温度:: 20\ndone?:: true').props).toEqual({ '温度': '20', 'done?': 'true' }));
+});
+
 describe('isBuiltinKey', () => {
   it('knows Logseq keys and prefixes', () => {
     for (const k of ['id', 'collapsed', 'heading', 'query-properties', 'card-next-schedule', 'hl-page', 'logseq.order-list-type'])

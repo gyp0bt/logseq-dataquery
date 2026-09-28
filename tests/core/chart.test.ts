@@ -62,6 +62,18 @@ describe('scatterSvg', () => {
   });
 });
 
+describe('bar with negative means', () => {
+  it('keeps the zero axis inside the chart', () => {
+    const neg = [row('p', { g: 'a', v: '-3' }), row('q', { g: 'b', v: '-1' })];
+    const html = barSvg(neg, { kind: 'bar', x: 'g', ys: ['v'] }, { g: 'string', v: 'number' }).html;
+    const heights = [...html.matchAll(/class="dq-bar" x="[^"]+" y="([^"]+)" width="[^"]+" height="([^"]+)"/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    for (const [y, h] of heights) {
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y + h).toBeLessThanOrEqual(360);
+    }
+  });
+});
+
 describe('bar', () => {
   const plot = { kind: 'bar', x: 'combine', ys: ['x', 'y'] } as const;
   it('groups, sorts categories and computes mean/min/max', () => {
