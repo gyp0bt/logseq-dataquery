@@ -1,10 +1,11 @@
 import '@logseq/libs';
 import { joinMacroArgs, parseDsl, printDsl } from './core/dsl';
 import { MACRO_TYPE } from './core/macroText';
-import { errorText, jumpTo, readMacro, saveDsl } from './host/actions';
+import { errorText, jumpTo, readMacro, saveDsl, setType } from './host/actions';
 import type { LogseqLike } from './host/api';
 import { Engine } from './host/engine';
 import { InlineViews } from './host/inline';
+import { mountPanel } from './panel/mount';
 import inlineCss from './style/inline.css?raw';
 import tokensCss from './style/tokens.css?raw';
 
@@ -66,12 +67,35 @@ async function main(): Promise<void> {
     timer = setTimeout(() => {
       engine.invalidate();
       void views.refreshAll();
+      panel.refresh();
     }, 300);
   });
 
-  const openPanel = async (_uuid: string) => {
-    await logseq.UI.showMsg('The panel is not available yet.', 'warning');
+  const panel = mountPanel(document.getElementById('app')!, {
+    evaluate: (dsl, uuid) => engine.evaluate(dsl, uuid),
+    save: (uuid, macro, dsl) => saveDsl(api, uuid, macro, dsl),
+    setType: (key, type) => setType(api, typesPage(), key, type),
+    jump: async (uuid) => {
+      logseq.hideMainUI();
+      await jumpTo(api, uuid);
+    },
+    close: () => logseq.hideMainUI(),
+    report,
+  });
+  const openPanel = async (uuid: string) => {
+    const { macro, dsl } = await readMacro(api, uuid);
+    panel.open({ uuid, dsl, macro });
+    logseq.showMainUI({ autoFocus: true });
   };
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') logseq.hideMainUI();
+  });
+
+  const applyTheme = (mode: string) => {
+    document.documentElement.dataset.theme = mode === 'dark' ? 'dark' : 'light';
+  };
+  applyTheme((await logseq.App.getUserConfigs()).preferredThemeMode);
+  logseq.App.onThemeModeChanged(({ mode }) => applyTheme(mode));
 
   logseq.provideModel({
     dqJump: (e: { dataset: { uuid: string } }) => jumpTo(api, e.dataset.uuid).catch(report),

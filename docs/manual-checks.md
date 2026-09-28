@@ -14,3 +14,12 @@ Build: `npm install && npm run build`. Logseq → Settings → Advanced → Deve
 - [ ] Edit a run value → view updates within a second.
 - [ ] Toggle light/dark theme → view stays readable.
 - [ ] (Alias probe) add `:macros {"dataquery" "{{renderer :dataquery, $1}}"}` to config.edn and try `{{dataquery sort gre-thin}}`. Report whether it renders; the README documents it only if it does.
+
+## M2 panel
+- [ ] "Open ↗" opens the panel with the macro's query; Esc, ✕ and clicking the dimmed backdrop close it.
+- [ ] Unticking a value chip, editing a min/max, adding a condition all rewrite the query text and the count.
+- [ ] Typing a query and pressing Enter updates the cards; a bad query shows the caret message.
+- [ ] Scatter / Bar / Table only, axis pickers and Labels work; clicking a point closes the panel and scrolls to the block.
+- [ ] Column header click sorts; the type picker writes `key:: type` into the types page and the view re-types.
+- [ ] Save to page rewrites the macro; editing the macro block meanwhile and then saving shows the "edited after this view opened" error.
+- [ ] Panel follows light/dark theme.
