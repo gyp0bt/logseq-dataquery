@@ -22,9 +22,9 @@ describe('ticks', () => {
     expect(formatTick(1.2, 0.2)).toBe('1.2');
     expect(formatTick(1, 0.2)).toBe('1.0');
   });
-  it('palette wraps to muted after 8', () => {
+  it('palette cycles after 10 like plotly', () => {
     expect(colorFor(0)).toBe('var(--dq-c0)');
-    expect(colorFor(8)).toBe('var(--dq-muted)');
+    expect(colorFor(10)).toBe('var(--dq-c0)');
   });
   it('common prefix cuts at the last dash', () => {
     expect(commonPrefix(['fsz-p8-o6', 'fsz-p8-o6-seed1', 'fsz-ms'])).toBe('fsz-');

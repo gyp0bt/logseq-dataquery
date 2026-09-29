@@ -7,8 +7,9 @@ export interface LegendItem { label: string; color: string; shape: 'dot' | 'squa
 export interface Chart { html: string; legend: LegendItem[] }
 export interface BarGroup { cat: string; n: number; stats: Array<{ mean: number; min: number; max: number; n: number } | null> }
 
-export const PALETTE_SIZE = 8;
-export const colorFor = (i: number): string => (i < PALETTE_SIZE ? `var(--dq-c${i})` : 'var(--dq-muted)');
+export const PALETTE_SIZE = 10;
+/** Cycles through the colorway, as plotly does. */
+export const colorFor = (i: number): string => `var(--dq-c${i % PALETTE_SIZE})`;
 
 /** Pixel size to draw at. Without one the SVG uses a 640×360 viewBox and scales to its container. */
 export interface ChartSize { w: number; h: number }
@@ -117,7 +118,9 @@ export function scatterSvg(rows: Row[], plot: ScatterPlot, types: Record<string,
     g += `<line class="dq-grid" x1="${f1(X(v))}" y1="${T}" x2="${f1(X(v))}" y2="${T + PH}"/><text class="dq-tick" x="${f1(X(v))}" y="${T + PH + 17}" text-anchor="middle">${formatTick(v, step(tx))}</text>`;
   for (const v of ty)
     g += `<line class="dq-grid" x1="${L}" y1="${f1(Y(v))}" x2="${L + PW}" y2="${f1(Y(v))}"/><text class="dq-tick" x="${L - 6}" y="${f1(Y(v) + 3.5)}" text-anchor="end">${formatTick(v, step(ty))}</text>`;
-  g += `<line class="dq-axis" x1="${L}" y1="${T + PH}" x2="${L + PW}" y2="${T + PH}"/><line class="dq-axis" x1="${L}" y1="${T}" x2="${L}" y2="${T + PH}"/>`;
+  // Plotly draws no axis box, only a thicker zero line when 0 is in range.
+  if (x0 < 0 && x1 > 0) g += `<line class="dq-zero" x1="${f1(X(0))}" y1="${T}" x2="${f1(X(0))}" y2="${T + PH}"/>`;
+  if (y0 < 0 && y1 > 0) g += `<line class="dq-zero" x1="${L}" y1="${f1(Y(0))}" x2="${L + PW}" y2="${f1(Y(0))}"/>`;
   if (rx && X(1) >= L && X(1) <= L + PW) g += `<line class="dq-ref" x1="${f1(X(1))}" y1="${T}" x2="${f1(X(1))}" y2="${T + PH}"/>`;
   if (ry && Y(1) >= T && Y(1) <= T + PH) g += `<line class="dq-ref" x1="${L}" y1="${f1(Y(1))}" x2="${L + PW}" y2="${f1(Y(1))}"/>`;
   g += `<text class="dq-title" x="${L + PW / 2}" y="${H - 10}" text-anchor="middle">${axisTitle(plot.x, types[plot.x])}</text>`;
@@ -143,7 +146,7 @@ export function scatterSvg(rows: Row[], plot: ScatterPlot, types: Record<string,
     if (plot.color) tip.push(tipLine(plot.color, p.r.values[plot.color]));
     // A pixel-sized chart gets hover boxes from the host script; the scaled one falls back to <title>.
     const title = b.sized ? '' : `<title>${esc(tip.join('\n'))}</title>`;
-    dots += `<circle class="dq-pt" cx="${f1(X(p.x))}" cy="${f1(Y(p.y))}" r="5" fill="${fill}" data-uuid="${esc(p.r.sources[0].uuid)}" data-tip="${esc(tip.join('\n'))}">${title}</circle>`;
+    dots += `<circle class="dq-pt" cx="${f1(X(p.x))}" cy="${f1(Y(p.y))}" r="3" fill="${fill}" data-uuid="${esc(p.r.sources[0].uuid)}" data-tip="${esc(tip.join('\n'))}">${title}</circle>`;
     if (plot.labels) dots += `<text class="dq-lbl" x="${f1(X(p.x) + 8)}" y="${f1(Y(p.y) + 4)}">${esc(labels[i].slice(prefix.length) || labels[i])}</text>`;
   });
   g += dots;
@@ -211,7 +214,8 @@ export function barSvg(rows: Row[], plot: BarPlot, types: Record<string, ValueTy
     });
     g += `<text class="dq-cat" x="${f1(cx)}" y="${T + PH + 18}" text-anchor="middle">${esc(gr.cat)}</text><text class="dq-tick" x="${f1(cx)}" y="${T + PH + 34}" text-anchor="middle">n=${gr.n}</text>`;
   });
-  g += `<line class="dq-axis" x1="${L}" y1="${f1(Y(0))}" x2="${L + PW}" y2="${f1(Y(0))}"/><line class="dq-axis" x1="${L}" y1="${T}" x2="${L}" y2="${T + PH}"/>`;
+  g = `<rect class="dq-area" x="${L}" y="${T}" width="${PW}" height="${PH}"/>` + g;
+  g += `<line class="dq-zero" x1="${L}" y1="${f1(Y(0))}" x2="${L + PW}" y2="${f1(Y(0))}"/>`;
   if (anyRatio) g += `<line class="dq-ref" x1="${L}" y1="${f1(Y(1))}" x2="${L + PW}" y2="${f1(Y(1))}"/>`;
   const legend: LegendItem[] = plot.ys.map((k, j) => ({ label: k, color: colorFor(j), shape: 'square' }));
   legend.push({ label: 'whiskers: min–max (n ≥ 2)', color: '', shape: 'none' });

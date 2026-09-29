@@ -190,7 +190,7 @@ export class Interact {
     const tip = box?.querySelector<HTMLElement>('.dq-tip');
     if (!mark || !box || !tip || !mark.dataset.tip) return;
     tip.textContent = mark.dataset.tip;
-    tip.style.borderColor = mark.getAttribute('fill') ?? '';
+    tip.style.background = mark.getAttribute('fill') ?? '';
     tip.hidden = false;
     const m = mark.getBoundingClientRect();
     const b = box.getBoundingClientRect();
@@ -210,7 +210,8 @@ export class Interact {
     const area = (e.target as Element | null)?.closest?.('.dq-area');
     const svg = area?.closest('svg') as SVGSVGElement | null;
     const box = svg?.closest<HTMLElement>('.dq-chartbox');
-    if (!area || !svg || !box || e.button !== 0) return;
+    // Only scatter plots record a domain to zoom into.
+    if (!area || !svg || !box || e.button !== 0 || !svg.hasAttribute('data-dom')) return;
     e.preventDefault();
     const p = local(svg, e);
     const rect = this.doc.createElementNS('http://www.w3.org/2000/svg', 'rect');
