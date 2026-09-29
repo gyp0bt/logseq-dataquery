@@ -94,4 +94,13 @@ describe('printDsl', () => {
     expect(printDsl(ok('in all | plot scatter x=a y=b labels=on'))).toBe('plot scatter x=a y=b');
     expect(printDsl(ok('merge by run | in here'))).toBe('from run | in here');
   });
+
+  it('asks for a | when a clause follows from without one', () => {
+    const r = parseDsl('from run where a = 1');
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.message).toContain("Put '|' before 'where'");
+      expect(r.error.col).toBe(9);
+    }
+  });
 });

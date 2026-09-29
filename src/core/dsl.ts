@@ -116,7 +116,10 @@ function parseScope(rest: string, at: number): Scope {
 
 function parseFrom(rest: string, at: number): string {
   const r = rest.trim();
-  if (!r || /\s/.test(r)) throw new DslSyntaxError("Write 'from <key>', e.g. from run.", at);
+  if (!r) throw new DslSyntaxError("Write 'from <key>', e.g. from run.", at);
+  const extra = /\s+(\S+)/.exec(r);
+  if (extra)
+    throw new DslSyntaxError(`Put '|' before '${extra[1]}': clauses are separated by '|', e.g. from run | where …`, at + rest.indexOf(r) + extra.index + extra[0].length - extra[1].length);
   return key(r, at + rest.indexOf(r));
 }
 
