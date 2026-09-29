@@ -37,6 +37,9 @@ describe('parseDsl', () => {
   it('parses bar plots and scopes', () => {
     expect(ok('in page | plot bar x=combine y=gre-thin,gre-thick').plot).toEqual({ kind: 'bar', x: 'combine', ys: ['gre-thin', 'gre-thick'] });
     expect(ok('in here').scope).toEqual({ kind: 'here' });
+    expect(ok('').scope).toEqual({ kind: 'all' });
+    expect(ok('from run').mergeBy).toBe('run');
+    expect(err('from run | merge by x').message).toBe("Use either 'from' or 'merge by', not both.");
     expect(ok('in page').scope).toEqual({ kind: 'page' });
   });
 
@@ -50,7 +53,7 @@ describe('parseDsl', () => {
 
   it('reports errors with a position', () => {
     expect(err('where gre-thin < | sort a')).toEqual({ message: "Missing value after '<'. Example: gre-thin < 1.3", col: 16 });
-    expect(err('frm run')).toEqual({ message: "Unknown clause 'frm'. Use in, merge, where, sort, cols or plot.", col: 0 });
+    expect(err('frm run')).toEqual({ message: "Unknown clause 'frm'. Use from, in, where, sort, cols or plot.", col: 0 });
     expect(err('where a < b').message).toBe("'<' compares numbers, got 'b'.");
     expect(err('where a = 1 | where b = 2').message).toBe("Duplicate 'where' clause. Combine them into one.");
     expect(err('where combine in none').message).toBe("Write 'in' values in parentheses, e.g. combine in (none, mean).");
@@ -58,7 +61,7 @@ describe('parseDsl', () => {
     expect(err('plot scatter x=a').message).toBe('plot scatter needs y=.');
     expect(err('plot pie x=a').message).toBe("Unknown plot 'pie'. Use scatter or bar.");
     expect(err('plot bar x=a y=b color=c').message).toBe("'color=' is not an option of plot bar. Use x=, y=.");
-    expect(err('in everywhere').message).toBe("'in' takes here, page or [[Page name]].");
+    expect(err('in everywhere').message).toBe("'in' takes all, here, page or [[Page name]].");
     expect(err('merge run').message).toBe("Write 'merge by <key>', e.g. merge by run.");
     expect(err('sort a | | where b = 1')).toEqual({ message: "Empty clause between '|'. Remove the extra '|'.", col: 9 });
     expect(err('where patch has x').message).toBe("'has' takes a number, got 'x'.");
@@ -88,6 +91,7 @@ describe('printDsl', () => {
       const q = ok(t);
       expect(ok(printDsl(q))).toEqual(q);
     }
-    expect(printDsl(ok('in here | plot scatter x=a y=b labels=on'))).toBe('plot scatter x=a y=b');
+    expect(printDsl(ok('in all | plot scatter x=a y=b labels=on'))).toBe('plot scatter x=a y=b');
+    expect(printDsl(ok('merge by run | in here'))).toBe('from run | in here');
   });
 });

@@ -9,6 +9,7 @@ export function ScopeSwitch({ scope, onChange }: { scope: Scope; onChange(s: Sco
   };
   return (
     <span className="dqp-seg" role="group" aria-label="Scope">
+      <button type="button" aria-pressed={scope.kind === 'all'} onClick={() => onChange({ kind: 'all' })}>All</button>
       <button type="button" aria-pressed={scope.kind === 'here'} onClick={() => onChange({ kind: 'here' })}>Here</button>
       <button type="button" aria-pressed={scope.kind === 'page'} onClick={() => onChange({ kind: 'page' })}>Page</button>
       <input

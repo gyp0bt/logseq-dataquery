@@ -54,7 +54,7 @@ describe('collect', () => {
 
 describe('Engine', () => {
   it('evaluates in scope with graph-wide types, excluding the types page', async () => {
-    const ev = await new Engine(graph(), () => 'dataquery/types').evaluate('sort gre', 'm');
+    const ev = await new Engine(graph(), () => 'dataquery/types').evaluate('in here | sort gre', 'm');
     expect(ev.result!.rows.map((r) => r.id)).toEqual(['b', 'a']);
     expect(ev.result!.types.gre).toBe('ratio');
     expect(ev.result!.types.seed).toBeUndefined();
@@ -82,7 +82,7 @@ describe('Engine', () => {
     const e = new Engine(api, () => 'dataquery/types');
     const err = await e.evaluate('', 'm').catch((x) => x);
     expect(errorText(err)).toBe('Could not read blocks from the Logseq database. (cause: boom)');
-    expect((await e.evaluate('', 'm')).result!.rows).toHaveLength(2);
+    expect((await e.evaluate('in here', 'm')).result!.rows).toHaveLength(2);
   });
 });
 
@@ -114,7 +114,7 @@ describe('InlineViews', () => {
     const provide = vi.fn();
     const alive = new Set(['s1']);
     const views = new InlineViews(new Engine(graph(), () => 'dataquery/types'), provide, (s) => alive.has(s));
-    await views.show('s1', 'm', 'sort gre');
+    await views.show('s1', 'm', 'in here | sort gre');
     expect(provide).toHaveBeenLastCalledWith('s1', expect.stringContaining('2 rows'));
     provide.mockClear();
     await views.refreshAll();
@@ -126,7 +126,7 @@ describe('InlineViews', () => {
   });
   it('a slow older render does not overwrite a newer one', async () => {
     const real = new Engine(graph(), () => 'dataquery/types');
-    const done = await real.evaluate('sort gre', 'm');
+    const done = await real.evaluate('in here | sort gre', 'm');
     let releaseOld!: () => void;
     const evaluate = vi
       .fn()
@@ -134,7 +134,7 @@ describe('InlineViews', () => {
       .mockImplementationOnce(async () => done);
     const provide = vi.fn();
     const views = new InlineViews({ evaluate } as unknown as Engine, provide, () => true);
-    const first = views.show('s', 'm', 'sort gre');
+    const first = views.show('s', 'm', 'in here | sort gre');
     await views.refreshAll();
     releaseOld();
     await first;

@@ -75,7 +75,7 @@ export function renderInline(inp: InlineInput): string {
     q.plot?.kind === 'scatter'
       ? `<button class="dq-btn" data-on-click="dqToggleLabels" data-macro="${uuid}">${q.plot.labels ? 'Hide labels' : 'Show labels'}</button>`
       : '';
-  const head = `<div class="dq-head"><code class="dq-dsl">${esc(inp.dsl) || 'all blocks with properties here'}</code><span class="dq-meta">${res.rows.length} rows${nConflicts ? ` · <span class="dq-warn">⚠ ${nConflicts}</span>` : ''}</span>${labelsBtn}${editBtn(inp.macroUuid)}<button class="dq-btn dq-open" data-on-click="dqOpen" data-macro="${uuid}">Open ↗</button></div>`;
+  const head = `<div class="dq-head"><code class="dq-dsl">${esc(inp.dsl) || 'all blocks with properties'}</code><span class="dq-meta">${res.rows.length} rows${nConflicts ? ` · <span class="dq-warn">⚠ ${nConflicts}</span>` : ''}</span>${labelsBtn}${editBtn(inp.macroUuid)}<button class="dq-btn dq-open" data-on-click="dqOpen" data-macro="${uuid}">Open ↗</button></div>`;
   let chart = '';
   if (q.plot) {
     const c = q.plot.kind === 'scatter' ? scatterSvg(res.rows, q.plot, res.types, q.mergeBy) : barSvg(res.rows, q.plot, res.types);

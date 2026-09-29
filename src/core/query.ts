@@ -43,6 +43,7 @@ export const typeOf = (types: Record<string, ValueType>, key: string): ValueType
 
 function inScope(b: SourceBlock, scope: Scope, ctx: QueryContext): boolean {
   if (b.uuid === ctx.macroUuid) return false;
+  if (scope.kind === 'all') return true;
   if (scope.kind === 'here') return ctx.hereIds.has(b.uuid);
   if (scope.kind === 'page') return b.page === ctx.macroPage;
   return b.pathRefs.includes(scope.page.toLowerCase());
@@ -116,7 +117,8 @@ export function runQuery(q: Query, ctx: QueryContext): QueryResult {
   let scoped = inOutlineOrder(ctx.blocks.filter((b) => inScope(b, q.scope, ctx)), ctx.order)
     .map(blockToRow)
     .filter((r): r is Row => r !== null);
-  if (q.mergeBy) scoped = mergeRows(scoped, q.mergeBy);
+  // `from KEY`: rows are the blocks that carry KEY, one row per KEY value.
+  if (q.mergeBy) scoped = mergeRows(scoped.filter((r) => q.mergeBy! in r.values), q.mergeBy);
   let rows = scoped.filter((r) => q.where.every((c) => matchCond(r, c, ctx.types)));
   if (q.sort.length) rows = sortRows(rows, q.sort, ctx.types);
   const present = keysInOrder(scoped);

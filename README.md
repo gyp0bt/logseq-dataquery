@@ -4,7 +4,7 @@ Turn blocks with properties into a typed table, scatter plot or bar chart — ri
 
 ```
 - Seed sweep
-  - {{renderer :dataquery, sort score | plot scatter x=score y=loss color=seed}}
+  - {{renderer :dataquery, in here | sort score | plot scatter x=score y=loss color=seed}}
   - run-a
     seed:: 0
     score:: 0.96
@@ -15,7 +15,7 @@ Turn blocks with properties into a typed table, scatter plot or bar chart — ri
     loss:: 0.88
 ```
 
-Type `/Data query` to insert the macro.
+Type `/Data query` to insert the macro. Keep the comma after `:dataquery`, as with any Logseq renderer.
 
 ## Why
 
@@ -27,12 +27,12 @@ Every block in scope that has at least one property of its own. Blocks with only
 
 ## Query language
 
-Clauses are separated by `|`; all are optional. An empty query shows every property block next to the macro.
+Clauses are separated by `|`; all are optional. An empty query shows every property block in the graph.
 
 | Clause | Meaning |
 |---|---|
-| `in here` · `in page` · `in [[Page]]` | Which blocks: siblings under the macro's parent (default), this page, or blocks that link to a page (tags on ancestors count) |
-| `merge by key` | Blocks with the same `key` value become one row. The newest journal wins; disagreements are flagged ⚠ |
+| `from key` | Rows are the blocks that have `key`; blocks with the same `key` value become one row. The newest journal wins; disagreements are flagged ⚠ (`merge by key` means the same) |
+| `in all` · `in here` · `in page` · `in [[Page]]` | Which blocks: the whole graph (default), blocks under the macro's parent, this page, or blocks that link to a page (tags on ancestors count) |
 | `where a < 1 and b in (x, y) and c has 16` | Filters. Operators: `= != < <= > >=`, `in (…)`, and `has n` for number lists such as `8/16`. Quote values containing spaces or commas: `note = "a, b"` |
 | `sort a desc, b` | Typed sort; blocks missing the key go last |
 | `cols a, b, prefix-*` | Table columns |

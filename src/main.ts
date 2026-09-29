@@ -57,7 +57,8 @@ async function main(): Promise<void> {
 
   logseq.App.onMacroRendererSlotted(async ({ slot, payload }) => {
     const [type, ...rest] = (payload.arguments ?? []) as string[];
-    if (type?.trim() !== MACRO_TYPE) return;
+    // `{{renderer :dataquery where …}}` without the comma arrives as one argument.
+    if (type?.trim().split(/\s/)[0] !== MACRO_TYPE) return;
     // Read the query from the block text: Logseq's argument splitting loses spacing inside quotes.
     let dsl: string;
     try {

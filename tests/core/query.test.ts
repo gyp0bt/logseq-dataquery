@@ -23,7 +23,9 @@ const blocks = [
 ];
 const types = computeTypes(blocks, parseTypeOverrides({ seed: 'category', 'gre*': 'ratio' }));
 const ctx: QueryContext = { blocks, types, macroUuid: 'm', macroPage: 'day', hereIds: new Set(['m', 'a', 'b', 'c', 'd']) };
-const ids = (t: string) => runQuery(q(t), ctx).rows.map((r) => r.id);
+/** Most cases look at the blocks next to the macro, so they spell out `in here`. */
+const here = (t: string) => (t ? `in here | ${t}` : 'in here');
+const ids = (t: string) => runQuery(q(here(t)), ctx).rows.map((r) => r.id);
 
 describe('computeTypes', () => {
   it('infers graph-wide and applies overrides', () => {
@@ -34,15 +36,17 @@ describe('computeTypes', () => {
 
 describe('scope', () => {
   it('here excludes the macro block and outside blocks', () => expect(ids('')).toEqual(['a', 'b', 'c', 'd']));
-  it('page', () => expect(ids('in page')).toEqual(['a', 'b', 'c', 'd']));
-  it('ref uses path refs, case-insensitively', () => expect(ids('in [[Work/NSB]]')).toEqual(['a', 'b', 'c', 'd']));
+  it('the default is the whole graph', () => expect(runQuery(q(''), ctx).rows.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd', 'x']));
+  it('from KEY keeps only blocks carrying KEY', () => expect(runQuery(q('from run'), ctx).rows.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']));
+  it('page', () => expect(runQuery(q('in page'), ctx).rows.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']));
+  it('ref uses path refs, case-insensitively', () => expect(runQuery(q('in [[Work/NSB]]'), ctx).rows.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']));
 });
 
 describe('row order', () => {
   it('follows the outline, not the database order', () => {
     const shuffled = [blocks[3], blocks[1], blocks[4], blocks[2]];
     const order = new Map(['a', 'b', 'c', 'd'].map((id, i) => [id, i]));
-    expect(runQuery(q(''), { ...ctx, blocks: shuffled, order }).rows.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(runQuery(q('in here'), { ...ctx, blocks: shuffled, order }).rows.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']);
   });
   it('without outline positions: newest journal first, then database id', () => {
     const refs = [
@@ -78,24 +82,24 @@ describe('sort', () => {
 
 describe('cols and warnings', () => {
   it('default cols in first-appearance order', () => {
-    expect(runQuery(q(''), ctx).cols).toEqual(['type', 'run', 'patch', 'grids', 'combine', 'seed', 'gre']);
+    expect(runQuery(q('in here'), ctx).cols).toEqual(['type', 'run', 'patch', 'grids', 'combine', 'seed', 'gre']);
   });
   it('merge key is left out of cols; patterns expand', () => {
-    expect(runQuery(q('merge by run'), ctx).cols).toEqual(['type', 'patch', 'grids', 'combine', 'seed', 'gre']);
-    expect(runQuery(q('cols g*, run'), ctx).cols).toEqual(['grids', 'gre', 'run']);
+    expect(runQuery(q('from run'), ctx).cols).toEqual(['type', 'patch', 'grids', 'combine', 'seed', 'gre']);
+    expect(runQuery(q('in here | cols g*, run'), ctx).cols).toEqual(['grids', 'gre', 'run']);
   });
   it('warns about keys absent from the scope', () => {
-    expect(runQuery(q('where nope = 1 | plot scatter x=gre y=zz'), ctx).warnings).toEqual([
+    expect(runQuery(q('in here | where nope = 1 | plot scatter x=gre y=zz'), ctx).warnings).toEqual([
       "No block in this scope has 'nope'.",
       "No block in this scope has 'zz'.",
     ]);
   });
   it('explains an empty scope', () => {
     const empty = { ...ctx, hereIds: new Set<string>() };
-    expect(runQuery(q(''), empty).warnings).toEqual(['No blocks with properties in this scope.']);
+    expect(runQuery(q('in here'), empty).warnings).toEqual(['No blocks with properties in this scope.']);
   });
   it('scoped keeps pre-filter rows', () => {
-    const r = runQuery(q('where gre < 1'), ctx);
+    const r = runQuery(q('in here | where gre < 1'), ctx);
     expect(r.rows.map((x) => x.id)).toEqual(['c']);
     expect(r.scoped.map((x) => x.id)).toEqual(['a', 'b', 'c', 'd']);
   });

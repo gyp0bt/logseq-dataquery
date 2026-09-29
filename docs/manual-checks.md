@@ -3,10 +3,10 @@
 準備: `npm install && npm run build` → Logseq の設定 → 詳細 → 開発者モード ON → `t p`（プラグイン）→ Load unpacked plugin → このリポジトリのフォルダを選ぶ。再ビルドしたらプラグインカードの Reload を押す。
 
 ## M1 ページ内ビュー
-- [ ] 見出しブロックの子に `/Data query` を入れる → 同じ親の下にある property 付きブロックの表が出る。
+- [ ] `/Data query` を入れる → グラフ全体の property 付きブロックの表が出る。`in here` を足すと同じ親の下だけになる。
 - [ ] `{{renderer :dataquery, where type = run | sort gre-thin | plot scatter x=gre-thin y=gre-thick color=seed}}` に書き換える → 散布図と並べ替えた表が出る。数値が数値として並ぶ（10 が 9 より後）。
 - [ ] `where combine in (none, mean)` と `where note = "a,b"` が効く（マクロ内のカンマ。ビューは分割後の引数ではなくブロック本文を読む）。
-- [ ] `in [[work/nsb]] | where type = run | merge by run` が効く（マクロ内のリンク）。重複した run が 1 行にまとまり、値の食い違いに ⚠ が付く。
+- [ ] `from run | in [[work/nsb]]` が効く（マクロ内のリンク）。重複した run が 1 行にまとまり、値の食い違いに ⚠ が付く。
 - [ ] `dataquery/types` ページを作り、ページプロパティに `gre-*:: ratio` と `seed:: category` を書く → 1.00 の破線と、セルの緑/赤が出る。
 - [ ] 表のリンクと散布図の点をクリック → そのブロックまでスクロールする。
 - [ ] Hide labels / Show labels を押す → マクロに `labels=off` が付く/外れる。

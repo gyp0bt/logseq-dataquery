@@ -1,7 +1,7 @@
 import { isNumberText } from './types';
 
 export type CmpOp = '=' | '!=' | '<' | '<=' | '>' | '>=';
-export type Scope = { kind: 'here' } | { kind: 'page' } | { kind: 'ref'; page: string };
+export type Scope = { kind: 'all' } | { kind: 'here' } | { kind: 'page' } | { kind: 'ref'; page: string };
 export type Cond =
   | { kind: 'cmp'; key: string; op: CmpOp; value: string }
   | { kind: 'in'; key: string; values: string[] }
@@ -15,7 +15,7 @@ export interface Query { scope: Scope; mergeBy?: string; where: Cond[]; sort: So
 export interface DslError { message: string; col: number }
 export type ParseResult = { ok: true; query: Query } | { ok: false; error: DslError };
 
-export const emptyQuery = (): Query => ({ scope: { kind: 'here' }, where: [], sort: [] });
+export const emptyQuery = (): Query => ({ scope: { kind: 'all' }, where: [], sort: [] });
 
 class DslSyntaxError extends Error {
   constructor(message: string, readonly col: number) {
@@ -88,13 +88,17 @@ function parseOrThrow(text: string): Query {
     seen.add(head);
     switch (head) {
       case 'in': q.scope = parseScope(rest, restAt); break;
-      case 'merge': q.mergeBy = parseMerge(rest, restAt); break;
+      case 'from':
+      case 'merge':
+        if (seen.has(head === 'from' ? 'merge' : 'from')) throw new DslSyntaxError("Use either 'from' or 'merge by', not both.", at);
+        q.mergeBy = head === 'from' ? parseFrom(rest, restAt) : parseMerge(rest, restAt);
+        break;
       case 'where': q.where = parseWhere(rest, restAt); break;
       case 'sort': q.sort = parseSort(rest, restAt); break;
       case 'cols': q.cols = parseCols(rest, restAt); break;
       case 'plot': q.plot = parsePlot(rest, restAt); break;
       default:
-        throw new DslSyntaxError(`Unknown clause '${m[1]}'. Use in, merge, where, sort, cols or plot.`, at);
+        throw new DslSyntaxError(`Unknown clause '${m[1]}'. Use from, in, where, sort, cols or plot.`, at);
     }
   }
   return q;
@@ -102,13 +106,21 @@ function parseOrThrow(text: string): Query {
 
 function parseScope(rest: string, at: number): Scope {
   const r = rest.trim();
+  if (r === 'all') return { kind: 'all' };
   if (r === 'here') return { kind: 'here' };
   if (r === 'page') return { kind: 'page' };
   const m = /^\[\[(.+)\]\]$/.exec(r);
   if (m) return { kind: 'ref', page: m[1].trim() };
-  throw new DslSyntaxError("'in' takes here, page or [[Page name]].", at);
+  throw new DslSyntaxError("'in' takes all, here, page or [[Page name]].", at);
 }
 
+function parseFrom(rest: string, at: number): string {
+  const r = rest.trim();
+  if (!r || /\s/.test(r)) throw new DslSyntaxError("Write 'from <key>', e.g. from run.", at);
+  return key(r, at + rest.indexOf(r));
+}
+
+/** Older spelling of `from`. */
 function parseMerge(rest: string, at: number): string {
   const m = /^by\s+(\S+)$/i.exec(rest.trim());
   if (!m) throw new DslSyntaxError("Write 'merge by <key>', e.g. merge by run.", at);
@@ -212,9 +224,10 @@ export function printCond(c: Cond): string {
 /** Canonical one-line form. parseDsl(printDsl(q)) equals q. */
 export function printDsl(q: Query): string {
   const parts: string[] = [];
+  if (q.mergeBy) parts.push(`from ${q.mergeBy}`);
+  if (q.scope.kind === 'here') parts.push('in here');
   if (q.scope.kind === 'page') parts.push('in page');
   if (q.scope.kind === 'ref') parts.push(`in [[${q.scope.page}]]`);
-  if (q.mergeBy) parts.push(`merge by ${q.mergeBy}`);
   if (q.where.length) parts.push('where ' + q.where.map(printCond).join(' and '));
   if (q.sort.length) parts.push('sort ' + q.sort.map((s) => s.key + (s.desc ? ' desc' : '')).join(', '));
   if (q.cols?.length) parts.push('cols ' + q.cols.join(', '));
