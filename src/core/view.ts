@@ -56,13 +56,16 @@ function conflictNotes(result: QueryResult, q: Query): string {
 }
 
 /** Whole inline view as an HTML string for `provideUI`; every data value is escaped. */
+/** Clicks inside plugin UI never reach Logseq's editor, so the view offers its own way back to the text. */
+const editBtn = (uuid: string) => `<button class="dq-btn" data-on-click="dqEdit" data-macro="${esc(uuid)}">Edit</button>`;
+
 export function renderInline(inp: InlineInput): string {
   if (!inp.parsed.ok) {
     const { message, col } = inp.parsed.error;
-    return `<div class="dq dq-error"><pre>${esc(inp.dsl)}\n${' '.repeat(col)}^</pre><p>${esc(message)}</p></div>`;
+    return `<div class="dq dq-error"><pre>${esc(inp.dsl)}\n${' '.repeat(col)}^</pre><p>${esc(message)}</p>${editBtn(inp.macroUuid)}</div>`;
   }
   if (inp.error || !inp.result) {
-    return `<div class="dq dq-error"><p>Data query failed: ${esc(inp.error ?? 'no result')}</p></div>`;
+    return `<div class="dq dq-error"><p>Data query failed: ${esc(inp.error ?? 'no result')}</p>${editBtn(inp.macroUuid)}</div>`;
   }
   const q = inp.parsed.query;
   const res = inp.result;
@@ -72,7 +75,7 @@ export function renderInline(inp: InlineInput): string {
     q.plot?.kind === 'scatter'
       ? `<button class="dq-btn" data-on-click="dqToggleLabels" data-macro="${uuid}">${q.plot.labels ? 'Hide labels' : 'Show labels'}</button>`
       : '';
-  const head = `<div class="dq-head"><code class="dq-dsl">${esc(inp.dsl) || 'all blocks with properties here'}</code><span class="dq-meta">${res.rows.length} rows${nConflicts ? ` · <span class="dq-warn">⚠ ${nConflicts}</span>` : ''}</span>${labelsBtn}<button class="dq-btn dq-open" data-on-click="dqOpen" data-macro="${uuid}">Open ↗</button></div>`;
+  const head = `<div class="dq-head"><code class="dq-dsl">${esc(inp.dsl) || 'all blocks with properties here'}</code><span class="dq-meta">${res.rows.length} rows${nConflicts ? ` · <span class="dq-warn">⚠ ${nConflicts}</span>` : ''}</span>${labelsBtn}${editBtn(inp.macroUuid)}<button class="dq-btn dq-open" data-on-click="dqOpen" data-macro="${uuid}">Open ↗</button></div>`;
   let chart = '';
   if (q.plot) {
     const c = q.plot.kind === 'scatter' ? scatterSvg(res.rows, q.plot, res.types, q.mergeBy) : barSvg(res.rows, q.plot, res.types);

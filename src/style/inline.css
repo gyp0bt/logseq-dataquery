@@ -1,6 +1,6 @@
-.dq { border: 1px solid var(--dq-line); border-radius: 8px; overflow: hidden; background: var(--dq-bg); color: var(--dq-fg); font-size: 13px; margin: 4px 0; }
+.dq { display: block; box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; contain: inline-size; border: 1px solid var(--dq-line); border-radius: 8px; overflow: hidden; background: var(--dq-bg); color: var(--dq-fg); font-size: 13px; margin: 4px 0; }
 .dq-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 10px; border-bottom: 1px solid var(--dq-line); }
-.dq-dsl { flex: 1 1 240px; font-size: 12px; background: var(--dq-code); border-radius: 5px; padding: 3px 8px; overflow-x: auto; white-space: nowrap; }
+.dq-dsl { flex: 1 1 200px; min-width: 0; font-size: 12px; background: var(--dq-code); border-radius: 5px; padding: 3px 8px; overflow-x: auto; white-space: nowrap; }
 .dq-meta { font-size: 12px; color: var(--dq-muted); font-variant-numeric: tabular-nums; }
 .dq-warn { color: var(--dq-warn); font-weight: 600; }
 .dq-btn { font: inherit; font-size: 12px; color: var(--dq-accent); background: transparent; border: 1px solid var(--dq-line); border-radius: 5px; padding: 2px 9px; cursor: pointer; }
@@ -38,4 +38,4 @@
 .dq-empty { padding: 10px; color: var(--dq-muted); text-align: center; margin: 0; }
 .dq-error { border-color: var(--dq-fail); background: var(--dq-fail-bg); padding: 8px 10px; }
 .dq-error pre { margin: 0; font-size: 12px; background: transparent; white-space: pre; overflow-x: auto; }
-.dq-error p { margin: 4px 0 0; color: var(--dq-fail); }
+.dq-error p { margin: 4px 0 6px; color: var(--dq-fail); }

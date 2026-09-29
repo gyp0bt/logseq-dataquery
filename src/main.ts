@@ -117,6 +117,8 @@ async function main(): Promise<void> {
 
   logseq.provideModel({
     dqJump: (e: { dataset: { uuid: string } }) => jumpTo(api, e.dataset.uuid).catch(report),
+    dqEdit: (e: { dataset: { macro: string } }) =>
+      logseq.Editor.editBlock(e.dataset.macro).catch((err) => report(new Error('Could not open the block for editing.', { cause: err }))),
     dqOpen: (e: { dataset: { macro: string } }) => openPanel(e.dataset.macro).catch(report),
     dqToggleLabels: (e: { dataset: { macro: string } }) => toggleLabels(e.dataset.macro).catch(report),
   });

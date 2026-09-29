@@ -18,6 +18,7 @@ describe('renderInline', () => {
     expect(html).toContain('class="dq dq-error"');
     expect(html).toContain('where gre &lt;\n           ^');
     expect(html).toContain('Missing value after');
+    expect(html).toContain('data-on-click="dqEdit" data-macro="m"');
   });
 
   it('shows a runtime failure message', () => {
@@ -33,6 +34,7 @@ describe('renderInline', () => {
     ];
     const html = renderInline({ macroUuid: 'm', dsl, parsed: parseDsl(dsl), result: result(rows, ['gre']) });
     expect(html).toContain('data-on-click="dqOpen" data-macro="m"');
+    expect(html).toContain('data-on-click="dqEdit" data-macro="m">Edit</button>');
     expect(html).toContain('2 rows');
     expect(html).toContain('⚠ 1');
     expect(html).toContain('<th>run</th>');
