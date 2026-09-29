@@ -7,13 +7,14 @@
 - [ ] `/Data query` を入れる → グラフ全体の property 付きブロックの表が出る。`in here` を足すと同じ親の下だけになる。
 - [ ] `{{renderer :dataquery, where type = run | sort gre-thin | plot scatter x=gre-thin y=gre-thick color=seed}}` に書き換える → 散布図と並べ替えた表が出る。数値が数値として並ぶ（10 が 9 より後）。
 - [ ] `where combine in (none, mean)` と `where note = "a,b"` が効く（マクロ内のカンマ。ビューは分割後の引数ではなくブロック本文を読む）。
-- [ ] `from run | in [[work/nsb]]` が効く（マクロ内のリンク）。重複した run が 1 行にまとまり、値の食い違いに ⚠ が付く。
+- [ ] `from run | in [[work/nsb]]` が効く（マクロ内のリンク）。重複した run が 1 行にまとまり、値の食い違うセルに ⚠ が付く（マウスを乗せると各値と出典ページ）。表の下に説明文は出ない。
 - [ ] `dataquery/types` ページを作り、ページプロパティに `gre-*:: ratio` と `seed:: category` を書く → 1.00 の破線と、セルの緑/赤が出る。
 - [ ] 表のリンクと散布図の点をクリック → そのブロックまでスクロールする。
 - [ ] Hide labels / Show labels を押す → マクロに `labels=off` が付く/外れる。
 - [ ] `where gre-thin <` と打つ → 赤枠に ^ 印とメッセージが出る。
 - [ ] run の値を書き換える → 1 秒以内にビューが追従する。
 - [ ] ライト/ダークを切り替える → 読める配色のまま。
+- [ ] 字の大きさが本文や Logseq 組み込みクエリの表と揃っている（設定で文字サイズを変えると追従する）。
 - [ ] 行がアウトラインに書いた順に並ぶ（シャッフルされない）。
 - [ ] （別名の試験）config.edn に `:macros {"dataquery" "{{renderer :dataquery, $1}}"}` を足し、`{{dataquery sort gre-thin}}` が描画されるか。動いたら README に載せる。
 

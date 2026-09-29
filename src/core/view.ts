@@ -38,21 +38,14 @@ export function tableHtml(result: QueryResult, q: Query): string {
           const t = result.types[k] ?? 'string';
           const v = r.values[k];
           const cls = [alignRight(t) ? 'dq-num' : '', cellClass(t, v), r.conflicts[k] ? 'dq-conflict' : ''].filter(Boolean).join(' ');
-          return `<td class="${cls}">${esc(v ?? '')}${r.conflicts[k] ? '<sup>⚠</sup>' : ''}</td>`;
+          const alt = r.conflicts[k] ? ` title="${esc(r.conflicts[k].map((c) => `${c.value} (${c.pageTitle})`).join(' / '))}"` : '';
+          return `<td class="${cls}"${alt}>${esc(v ?? '')}${r.conflicts[k] ? '<sup>⚠</sup>' : ''}</td>`;
         })
         .join('');
       return `<tr><td class="dq-link" data-on-click="dqJump" data-uuid="${esc(r.sources[0].uuid)}">${esc(rowLabel(r, q.mergeBy))}</td>${cells}</tr>`;
     })
     .join('');
   return `<div class="dq-tbl"><table><thead><tr><th>${esc(q.mergeBy ?? 'block')}</th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
-}
-
-function conflictNotes(result: QueryResult, q: Query): string {
-  const lines: string[] = [];
-  for (const r of result.rows)
-    for (const [k, list] of Object.entries(r.conflicts))
-      lines.push(`⚠ ${esc(rowLabel(r, q.mergeBy))}: ${esc(k)} is ${list.map((c) => `${esc(c.value)} (${esc(c.pageTitle)})`).join(' / ')}. Showing the first.`);
-  return lines.length ? `<div class="dq-conflicts">${lines.map((l) => `<p>${l}</p>`).join('')}</div>` : '';
 }
 
 /** Whole inline view as an HTML string for `provideUI`; every data value is escaped. */
@@ -86,5 +79,5 @@ export function renderInline(inp: InlineInput): string {
     chart = `<div class="dq-chartbox">${c.html}${legendHtml(c.legend)}</div>`;
   }
   const notes = res.warnings.map((w) => `<p class="dq-note">${esc(w)}</p>`).join('');
-  return `<div class="dq">${head}${chart}${tableHtml(res, q)}${conflictNotes(res, q)}${notes}</div>`;
+  return `<div class="dq">${head}${chart}${tableHtml(res, q)}${notes}</div>`;
 }

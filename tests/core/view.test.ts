@@ -42,7 +42,8 @@ describe('renderInline', () => {
     expect(html).toContain('<th>run</th>');
     expect(html).toContain('data-on-click="dqJump" data-uuid="b"');
     expect(html).toContain('class="dq-num dq-pass"');
-    expect(html).toContain('r2: gre is 1.27 (Sep 28th) / 1.72 (Sep 27th). Showing the first.');
+    expect(html).toContain('title="1.27 (Sep 28th) / 1.72 (Sep 27th)"');
+    expect(html).not.toContain('Showing the first');
     expect(html).not.toContain('dqToggleLabels');
   });
 
