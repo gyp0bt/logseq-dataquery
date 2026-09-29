@@ -1,26 +1,27 @@
-# Manual checks (Logseq OG desktop)
+# 実機確認（Logseq OG デスクトップ）
 
-Build: `npm install && npm run build`. Logseq → Settings → Advanced → Developer mode ON → `t p` (Plugins) → Load unpacked plugin → select this repo folder. After a rebuild, press Reload on the plugin card.
+準備: `npm install && npm run build` → Logseq の設定 → 詳細 → 開発者モード ON → `t p`（プラグイン）→ Load unpacked plugin → このリポジトリのフォルダを選ぶ。再ビルドしたらプラグインカードの Reload を押す。
 
-## M1 inline view
-- [ ] Under a heading block, add a child `/Data query`. A table of the sibling property blocks appears.
-- [ ] Edit it to `{{renderer :dataquery, where type = run | sort gre-thin | plot scatter x=gre-thin y=gre-thick color=seed}}` — chart and sorted table render; numbers sort numerically.
-- [ ] `where combine in (none, mean)` and `where note = "a,b"` work (commas inside the macro; the view reads the block text, not the split arguments).
-- [ ] `in [[work/nsb]] | where type = run | merge by run` works (link inside the macro); duplicated runs appear once, conflicts show ⚠.
-- [ ] Add a `dataquery/types` page with `gre-*:: ratio` and `seed:: category` as page properties; the 1.00 line and green/red cells appear.
-- [ ] Click a table link and a chart point → Logseq scrolls to the block.
-- [ ] Hide labels / Show labels rewrites the macro with/without `labels=off`.
-- [ ] Type `where gre-thin <` → red box with caret and message.
-- [ ] Edit a run value → view updates within a second.
-- [ ] Toggle light/dark theme → view stays readable.
-- [ ] (Alias probe) add `:macros {"dataquery" "{{renderer :dataquery, $1}}"}` to config.edn and try `{{dataquery sort gre-thin}}`. Report whether it renders; the README documents it only if it does.
+## M1 ページ内ビュー
+- [ ] 見出しブロックの子に `/Data query` を入れる → 同じ親の下にある property 付きブロックの表が出る。
+- [ ] `{{renderer :dataquery, where type = run | sort gre-thin | plot scatter x=gre-thin y=gre-thick color=seed}}` に書き換える → 散布図と並べ替えた表が出る。数値が数値として並ぶ（10 が 9 より後）。
+- [ ] `where combine in (none, mean)` と `where note = "a,b"` が効く（マクロ内のカンマ。ビューは分割後の引数ではなくブロック本文を読む）。
+- [ ] `in [[work/nsb]] | where type = run | merge by run` が効く（マクロ内のリンク）。重複した run が 1 行にまとまり、値の食い違いに ⚠ が付く。
+- [ ] `dataquery/types` ページを作り、ページプロパティに `gre-*:: ratio` と `seed:: category` を書く → 1.00 の破線と、セルの緑/赤が出る。
+- [ ] 表のリンクと散布図の点をクリック → そのブロックまでスクロールする。
+- [ ] Hide labels / Show labels を押す → マクロに `labels=off` が付く/外れる。
+- [ ] `where gre-thin <` と打つ → 赤枠に ^ 印とメッセージが出る。
+- [ ] run の値を書き換える → 1 秒以内にビューが追従する。
+- [ ] ライト/ダークを切り替える → 読める配色のまま。
+- [ ] 行がアウトラインに書いた順に並ぶ（シャッフルされない）。
+- [ ] （別名の試験）config.edn に `:macros {"dataquery" "{{renderer :dataquery, $1}}"}` を足し、`{{dataquery sort gre-thin}}` が描画されるか。動いたら README に載せる。
 
-## M2 panel
-- [ ] "Open ↗" opens the panel with the macro's query; Esc, ✕ and clicking the dimmed backdrop close it.
-- [ ] Unticking a value chip, editing a min/max, adding a condition all rewrite the query text and the count.
-- [ ] Typing a query and pressing Enter updates the cards; a bad query shows the caret message.
-- [ ] Scatter / Bar / Table only, axis pickers and Labels work; clicking a point closes the panel and scrolls to the block.
-- [ ] Column header click sorts; the type picker writes `key:: type` into the types page and the view re-types.
-- [ ] Save to page rewrites the macro; editing the macro block meanwhile and then saving shows the "edited after this view opened" error.
-- [ ] Panel follows light/dark theme.
-- [ ] Rows appear in the order written in the outline, not shuffled.
+## M2 専用画面
+- [ ] 「Open ↗」でマクロのクエリ入りの画面が開く。Esc・✕・暗い背景のクリックで閉じる。
+- [ ] 値チップのチェックを外す、min/max を入れる、条件を追加する → どれもクエリ文字列と件数が書き換わる。
+- [ ] クエリを打って Enter → カードが追従する。誤ったクエリは ^ 印つきのメッセージ。
+- [ ] Scatter / Bar / Table only、軸の選択、Labels が効く。点をクリックすると画面が閉じてブロックへ飛ぶ。
+- [ ] 列見出しクリックで並べ替え（昇順 → 降順 → なし）。型の選択で型ページに `key:: type` が書かれ、表示が変わる。
+- [ ] Save to page でマクロが書き換わる。開いている間にマクロのブロックを別途編集してから保存すると「edited after this view opened」エラーになる。
+- [ ] Enter を押さずに打ったクエリも Save で保存される。保存後の Revert は保存した内容に戻る。
+- [ ] 専用画面もライト/ダークに追従する。
