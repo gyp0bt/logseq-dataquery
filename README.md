@@ -39,7 +39,7 @@ Clauses are separated by `|`; all are optional. An empty query shows every prope
 | `plot scatter x=a y=b [color=c] [labels=off]` | Scatter plot; click a point to jump to its block |
 | `plot bar x=c y=a,b` | Bar chart of means per category; groups with 2+ rows show min–max whiskers |
 
-Mistakes are shown in place with a caret under the problem.
+Edit the query right in the view: change the query line at the top and press Enter (or click away) to write it back into the macro. Mistakes are shown in place with a caret under the problem.
 
 ## Types
 

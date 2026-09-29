@@ -29,6 +29,13 @@ async function toggleLabels(uuid: string): Promise<void> {
   await saveDsl(api, uuid, macro, printDsl(parsed.query));
 }
 
+/** Save a query typed into the view. Invalid text is saved too, so the view can point at the mistake. */
+async function setDslFromView(uuid: string, text: string): Promise<void> {
+  const { macro, dsl } = await readMacro(api, uuid);
+  const next = text.replace(/[\r\n]+/g, ' ').trim();
+  if (next !== dsl) await saveDsl(api, uuid, macro, next);
+}
+
 async function main(): Promise<void> {
   logseq.useSettingsSchema([
     {
@@ -118,6 +125,7 @@ async function main(): Promise<void> {
 
   logseq.provideModel({
     dqJump: (e: { dataset: { uuid: string } }) => jumpTo(api, e.dataset.uuid).catch(report),
+    dqSetDsl: (e: { value: string; dataset: { macro: string } }) => setDslFromView(e.dataset.macro, e.value).catch(report),
     dqEdit: (e: { dataset: { macro: string } }) =>
       logseq.Editor.editBlock(e.dataset.macro).catch((err) => report(new Error('Could not open the block for editing.', { cause: err }))),
     dqOpen: (e: { dataset: { macro: string } }) => openPanel(e.dataset.macro).catch(report),

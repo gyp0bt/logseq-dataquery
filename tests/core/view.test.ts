@@ -35,6 +35,8 @@ describe('renderInline', () => {
     const html = renderInline({ macroUuid: 'm', dsl, parsed: parseDsl(dsl), result: result(rows, ['gre']) });
     expect(html).toContain('data-on-click="dqOpen" data-macro="m"');
     expect(html).toContain('data-on-click="dqEdit" data-macro="m">Edit</button>');
+    expect(html).toContain('value="merge by run | sort gre" placeholder=');
+    expect(html).toContain('data-on-change="dqSetDsl" data-macro="m"');
     expect(html).toContain('2 rows');
     expect(html).toContain('⚠ 1');
     expect(html).toContain('<th>run</th>');

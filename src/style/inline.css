@@ -4,7 +4,9 @@
 .block-content .lsp-hook-ui-slot:has(.dq) [data-injected-ui] { display: flex; width: 100%; min-width: 0; }
 .dq { display: block; box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; contain: inline-size; border: 1px solid var(--dq-line); border-radius: 8px; overflow: hidden; background: var(--dq-bg); color: var(--dq-fg); font-size: 13px; margin: 4px 0; }
 .dq-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 10px; border-bottom: 1px solid var(--dq-line); }
-.dq-dsl { flex: 1 1 200px; min-width: 0; font-size: 12px; background: var(--dq-code); border-radius: 5px; padding: 3px 8px; overflow-x: auto; white-space: nowrap; }
+.dq-dsl { flex: 1 1 200px; min-width: 0; font: 12px/1.5 ui-monospace, monospace; color: var(--dq-fg); background: var(--dq-code); border: 1px solid transparent; border-radius: 5px; padding: 3px 8px; }
+.dq-dsl:focus { outline: none; border-color: var(--dq-accent); }
+.dq-error .dq-dsl { width: 100%; box-sizing: border-box; margin-bottom: 4px; }
 .dq-meta { font-size: 12px; color: var(--dq-muted); font-variant-numeric: tabular-nums; }
 .dq-warn { color: var(--dq-warn); font-weight: 600; }
 .dq-btn { font: inherit; font-size: 12px; color: var(--dq-accent); background: transparent; border: 1px solid var(--dq-line); border-radius: 5px; padding: 2px 9px; cursor: pointer; }

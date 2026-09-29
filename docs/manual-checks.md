@@ -3,6 +3,7 @@
 準備: `npm install && npm run build` → Logseq の設定 → 詳細 → 開発者モード ON → `t p`（プラグイン）→ Load unpacked plugin → このリポジトリのフォルダを選ぶ。再ビルドしたらプラグインカードの Reload を押す。
 
 ## M1 ページ内ビュー
+- [ ] ビュー上端のクエリ欄を直接書き換えて Enter（または欄の外をクリック）→ マクロ本文が書き換わりビューが追従する。打っている間に Logseq のショートカット（`t p` など）が暴発しない。誤ったクエリも保存され、赤枠の中の欄でそのまま直せる。
 - [ ] `/Data query` を入れる → グラフ全体の property 付きブロックの表が出る。`in here` を足すと同じ親の下だけになる。
 - [ ] `{{renderer :dataquery, where type = run | sort gre-thin | plot scatter x=gre-thin y=gre-thick color=seed}}` に書き換える → 散布図と並べ替えた表が出る。数値が数値として並ぶ（10 が 9 より後）。
 - [ ] `where combine in (none, mean)` と `where note = "a,b"` が効く（マクロ内のカンマ。ビューは分割後の引数ではなくブロック本文を読む）。
