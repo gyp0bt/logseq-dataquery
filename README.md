@@ -36,10 +36,12 @@ Clauses are separated by `|`; all are optional. An empty query shows every prope
 | `where a < 1 and b in (x, y) and c has 16` | Filters. Operators: `= != < <= > >=`, `in (…)`, and `has n` for number lists such as `8/16`. Quote values containing spaces or commas: `note = "a, b"` |
 | `sort a desc, b` | Typed sort; blocks missing the key go last |
 | `cols a, b, prefix-*` | Table columns |
-| `plot scatter x=a y=b [color=c] [labels=off]` | Scatter plot; click a point to jump to its block |
-| `plot bar x=c y=a,b` | Bar chart of means per category; groups with 2+ rows show min–max whiskers |
+| `plot scatter x=a y=b [color=c] [labels=on]` | Scatter plot. Hover a point for its values, click it to highlight its table row, drag to zoom, double-click to reset. `labels=on` writes every point's name on the chart |
+| `plot bar x=c y=a,b` | Bar chart of means per category; groups with 2+ rows show min–max whiskers. Hover a bar for its numbers |
 
-Edit the query right in the view: change the query line at the top and press Enter (or click away) to write it back into the macro. Mistakes are shown in place with a caret under the problem.
+Charts have a toolbar on hover: zoom in, zoom out, reset axes, enlarge.
+
+Edit the query right in the view: change the query line at the top and press Enter to write it back into the macro (Esc cancels). Mistakes are shown under the line with a caret, and nothing is saved until the query is valid. Click blank space in the view to edit the block's raw text, as with Logseq's own renderers.
 
 ## Types
 

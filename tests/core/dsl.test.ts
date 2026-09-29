@@ -91,7 +91,8 @@ describe('printDsl', () => {
       const q = ok(t);
       expect(ok(printDsl(q))).toEqual(q);
     }
-    expect(printDsl(ok('in all | plot scatter x=a y=b labels=on'))).toBe('plot scatter x=a y=b');
+    expect(printDsl(ok('in all | plot scatter x=a y=b labels=off'))).toBe('plot scatter x=a y=b');
+    expect(printDsl(ok('plot scatter x=a y=b labels=on'))).toBe('plot scatter x=a y=b labels=on');
     expect(printDsl(ok('merge by run | in here'))).toBe('from run | in here');
   });
 

@@ -34,9 +34,21 @@ describe('ticks', () => {
 
 describe('scatterSvg', () => {
   const c = scatterSvg(rows, { kind: 'scatter', x: 'x', y: 'y', color: 'seed', labels: true }, types);
-  it('draws one point per numeric row, with jump hooks', () => {
+  it('draws one point per numeric row, with row ids and hover text', () => {
     expect(c.html.match(/<circle /g)).toHaveLength(4);
-    expect(c.html).toContain('data-uuid="fsz-a" data-on-click="dqJump"');
+    expect(c.html).toContain('data-uuid="fsz-a" data-tip="fsz-a\nx: 1.27\ny: 0.96\nseed: 0"');
+    expect(c.html).toContain('<title>');
+  });
+  it('a pixel-sized chart draws at that size, drops <title> and records its domain', () => {
+    const s = scatterSvg(rows, { kind: 'scatter', x: 'x', y: 'y', labels: false }, types, undefined, { size: { w: 900, h: 360 } });
+    expect(s.html).toContain('viewBox="0 0 900 360" width="900" height="360"');
+    expect(s.html).not.toContain('<title>');
+    expect(s.html).toMatch(/data-dom="1,1\.6,0\.8,2" data-box="64,16,816,292"/);
+  });
+  it('a zoomed view keeps its exact range and hides points outside it', () => {
+    const z = scatterSvg(rows, { kind: 'scatter', x: 'x', y: 'y', labels: false }, types, undefined, { view: { x0: 1.25, x1: 1.3, y0: 0.9, y1: 1.4 } });
+    expect(z.html.match(/<circle /g)).toHaveLength(2);
+    expect(z.html).toContain('data-dom="1.25,1.3,0.9,1.4"');
   });
   it('ratio axes get reference lines and a pass region', () => {
     expect(c.html.match(/class="dq-ref"/g)).toHaveLength(2);

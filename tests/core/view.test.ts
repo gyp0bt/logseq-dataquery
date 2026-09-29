@@ -15,10 +15,11 @@ describe('renderInline', () => {
   it('shows the DSL error with a caret under the column', () => {
     const dsl = 'where gre <';
     const html = renderInline({ macroUuid: 'm', dsl, parsed: parseDsl(dsl) });
-    expect(html).toContain('class="dq dq-error"');
-    expect(html).toContain('where gre &lt;\n           ^');
+    // The field stays editable above the message instead of being replaced by it.
+    expect(html).toContain('class="dq-dsl dq-bad"');
+    expect(html).toContain('<div class="dq-msg"><pre>where gre &lt;\n           ^</pre>');
     expect(html).toContain('Missing value after');
-    expect(html).toContain('data-on-click="dqEdit" data-macro="m"');
+    expect(html).toContain('<div class="dq" data-on-click="dqEdit" data-macro="m">');
   });
 
   it('shows a runtime failure message', () => {
@@ -26,7 +27,7 @@ describe('renderInline', () => {
     expect(html).toContain('Data query failed: Could not read blocks (cause: boom)');
   });
 
-  it('renders header, table and conflict notes', () => {
+  it('renders header, table and conflict marks', () => {
     const dsl = 'merge by run | sort gre';
     const rows = [
       row('a', { run: 'r1', gre: '0.96' }),
@@ -34,9 +35,11 @@ describe('renderInline', () => {
     ];
     const html = renderInline({ macroUuid: 'm', dsl, parsed: parseDsl(dsl), result: result(rows, ['gre']) });
     expect(html).toContain('data-on-click="dqOpen" data-macro="m"');
-    expect(html).toContain('data-on-click="dqEdit" data-macro="m">Edit</button>');
+    expect(html).not.toContain('>Edit</button>');
     expect(html).toContain('value="merge by run | sort gre" placeholder=');
-    expect(html).toContain('data-on-change="dqSetDsl" data-macro="m"');
+    expect(html).toContain('data-on-click="dqNoop" data-macro="m"');
+    expect(html).toContain('<div class="dq-tbl" data-on-click="dqNoop">');
+    expect(html).toContain('<tr data-uuid="b">');
     expect(html).toContain('2 rows');
     expect(html).toContain('⚠ 1');
     expect(html).toContain('<th>run</th>');
@@ -44,13 +47,17 @@ describe('renderInline', () => {
     expect(html).toContain('class="dq-num dq-pass"');
     expect(html).toContain('title="1.27 (Sep 28th) / 1.72 (Sep 27th)"');
     expect(html).not.toContain('Showing the first');
-    expect(html).not.toContain('dqToggleLabels');
   });
 
-  it('offers the labels toggle only for scatter plots', () => {
-    const dsl = 'plot scatter x=gre y=gre labels=off';
+  it('charts sit in a box the host script can redraw, with a plotly-like modebar', () => {
+    const dsl = 'plot scatter x=gre y=gre';
     const html = renderInline({ macroUuid: 'm', dsl, parsed: parseDsl(dsl), result: result([row('a', { gre: '1' })], ['gre']) });
-    expect(html).toContain('data-on-click="dqToggleLabels" data-macro="m">Show labels</button>');
+    expect(html).toContain('<div class="dq-chartbox" data-on-click="dqNoop" data-macro="m">');
+    for (const a of ['zoomin', 'zoomout', 'reset', 'expand']) expect(html).toContain(`data-act="${a}"`);
+    const bar = 'plot bar x=run y=gre';
+    const b = renderInline({ macroUuid: 'm', dsl: bar, parsed: parseDsl(bar), result: result([row('a', { gre: '1', run: 'r' })], ['gre']) });
+    expect(b).toContain('data-act="expand"');
+    expect(b).not.toContain('data-act="zoomin"');
   });
 
   it('escapes property values everywhere (Review Focus 4)', () => {

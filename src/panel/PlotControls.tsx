@@ -24,7 +24,7 @@ export function PlotControls({ query, result, onChange }: { query: Query; result
   return (
     <div className="dqp-pctl">
       <span className="dqp-seg" role="group" aria-label="Chart">
-        <button type="button" aria-pressed={kind === 'scatter'} onClick={() => set({ kind: 'scatter', x: first(numeric), y: first(numeric, 1), labels: true })}>Scatter</button>
+        <button type="button" aria-pressed={kind === 'scatter'} onClick={() => set({ kind: 'scatter', x: first(numeric), y: first(numeric, 1), labels: false })}>Scatter</button>
         <button type="button" aria-pressed={kind === 'bar'} onClick={() => set({ kind: 'bar', x: first(discrete), ys: [first(numeric)] })}>Bar</button>
         <button type="button" aria-pressed={kind === 'none'} onClick={() => set(undefined)}>Table only</button>
       </span>

@@ -211,7 +211,7 @@ function parsePlot(rest: string, at: number): Plot {
   const labels = opts.labels?.s.toLowerCase();
   if (labels !== undefined && labels !== 'on' && labels !== 'off')
     throw new DslSyntaxError('labels= takes on or off.', opts.labels.at);
-  const plot: ScatterPlot = { kind, x: key(opts.x.s, opts.x.at), y: key(opts.y.s, opts.y.at), labels: labels !== 'off' };
+  const plot: ScatterPlot = { kind, x: key(opts.x.s, opts.x.at), y: key(opts.y.s, opts.y.at), labels: labels === 'on' };
   if (opts.color) plot.color = key(opts.color.s, opts.color.at);
   return plot;
 }
@@ -236,7 +236,7 @@ export function printDsl(q: Query): string {
   if (q.cols?.length) parts.push('cols ' + q.cols.join(', '));
   const p = q.plot;
   if (p?.kind === 'scatter')
-    parts.push(`plot scatter x=${p.x} y=${p.y}` + (p.color ? ` color=${p.color}` : '') + (p.labels ? '' : ' labels=off'));
+    parts.push(`plot scatter x=${p.x} y=${p.y}` + (p.color ? ` color=${p.color}` : '') + (p.labels ? ' labels=on' : ''));
   if (p?.kind === 'bar') parts.push(`plot bar x=${p.x} y=${p.ys.join(',')}`);
   return parts.join(' | ');
 }

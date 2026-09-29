@@ -2,12 +2,14 @@ import { parseDsl } from '../core/dsl';
 import { renderInline } from '../core/view';
 import { errorText } from './actions';
 import type { Engine } from './engine';
+import type { ChartData } from './interact';
 
 interface SlotInfo { uuid: string; dsl: string; gen: number }
 
 /** Tracks rendered macro slots so DB changes can re-render them. */
 export class InlineViews {
   private slots = new Map<string, SlotInfo>();
+  private charts = new Map<string, ChartData>();
 
   constructor(
     private engine: Engine,
@@ -32,13 +34,25 @@ export class InlineViews {
     const gen = ++info.gen;
     const { uuid, dsl } = info;
     let html: string;
+    let chart: ChartData | undefined;
     try {
-      html = renderInline({ macroUuid: uuid, dsl, ...(await this.engine.evaluate(dsl, uuid)) });
+      const ev = await this.engine.evaluate(dsl, uuid);
+      html = renderInline({ macroUuid: uuid, dsl, ...ev });
+      const plot = ev.parsed.ok ? ev.parsed.query.plot : undefined;
+      if (plot && ev.result && ev.parsed.ok) chart = { rows: ev.result.rows, plot, types: ev.result.types, mergeBy: ev.parsed.query.mergeBy };
     } catch (e) {
       console.error('[dataquery] could not render the query view', e);
       html = renderInline({ macroUuid: uuid, dsl, parsed: parseDsl(dsl), error: errorText(e) });
     }
     // A slower render that started on older data must not overwrite a newer one.
-    if (this.slots.get(slot) === info && info.gen === gen) this.provide(slot, html);
+    if (this.slots.get(slot) === info && info.gen === gen) {
+      if (chart) this.charts.set(uuid, chart);
+      else this.charts.delete(uuid);
+      this.provide(slot, html);
+    }
+  }
+
+  chart(uuid: string): ChartData | undefined {
+    return this.charts.get(uuid);
   }
 }

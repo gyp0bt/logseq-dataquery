@@ -1,10 +1,11 @@
 import '@logseq/libs';
-import { joinMacroArgs, parseDsl, printDsl } from './core/dsl';
+import { joinMacroArgs } from './core/dsl';
 import { MACRO_TYPE } from './core/macroText';
 import { errorText, jumpTo, readMacro, saveDsl, setType } from './host/actions';
 import type { LogseqLike } from './host/api';
 import { Engine } from './host/engine';
 import { InlineViews } from './host/inline';
+import { Interact } from './host/interact';
 import { mountPanel } from './panel/mount';
 import inlineCss from './style/inline.css?raw';
 import tokensCss from './style/tokens.css?raw';
@@ -19,20 +20,9 @@ function report(e: unknown): void {
   void logseq.UI.showMsg(errorText(e), 'error');
 }
 
-async function toggleLabels(uuid: string): Promise<void> {
+/** Save a query typed into the view (already parsed by the caller). */
+async function setDslFromView(uuid: string, next: string): Promise<void> {
   const { macro, dsl } = await readMacro(api, uuid);
-  const parsed = parseDsl(dsl);
-  if (!parsed.ok) throw new Error(`Fix the query before toggling labels: ${parsed.error.message}`);
-  const plot = parsed.query.plot;
-  if (plot?.kind !== 'scatter') return;
-  plot.labels = !plot.labels;
-  await saveDsl(api, uuid, macro, printDsl(parsed.query));
-}
-
-/** Save a query typed into the view. Invalid text is saved too, so the view can point at the mistake. */
-async function setDslFromView(uuid: string, text: string): Promise<void> {
-  const { macro, dsl } = await readMacro(api, uuid);
-  const next = text.replace(/[\r\n]+/g, ' ').trim();
   if (next !== dsl) await saveDsl(api, uuid, macro, next);
 }
 
@@ -49,9 +39,13 @@ async function main(): Promise<void> {
   const engine = new Engine(api, typesPage);
   logseq.provideStyle(tokensCss + '\n' + inlineCss);
 
-  const views = new InlineViews(
+  let interact: Interact | undefined;
+  const views: InlineViews = new InlineViews(
     engine,
-    (slot, html) => logseq.provideUI({ key: `dataquery-${slot}`, slot, reset: true, template: html }),
+    (slot, html) => {
+      logseq.provideUI({ key: `dataquery-${slot}`, slot, reset: true, template: html });
+      interact?.attach(slot);
+    },
     (slot) => {
       try {
         return !!parent.document.getElementById(slot);
@@ -61,6 +55,14 @@ async function main(): Promise<void> {
       }
     },
   );
+
+  try {
+    interact = new Interact(parent.document, { submit: setDslFromView, chart: (uuid) => views.chart(uuid), report });
+    const off = interact.install();
+    logseq.beforeunload(async () => off());
+  } catch (e) {
+    report(new Error('Data query cannot reach the Logseq window: the query field and chart tools will not respond.', { cause: e }));
+  }
 
   logseq.App.onMacroRendererSlotted(async ({ slot, payload }) => {
     const [type, ...rest] = (payload.arguments ?? []) as string[];
@@ -125,11 +127,10 @@ async function main(): Promise<void> {
 
   logseq.provideModel({
     dqJump: (e: { dataset: { uuid: string } }) => jumpTo(api, e.dataset.uuid).catch(report),
-    dqSetDsl: (e: { value: string; dataset: { macro: string } }) => setDslFromView(e.dataset.macro, e.value).catch(report),
+    dqNoop: () => {},
     dqEdit: (e: { dataset: { macro: string } }) =>
       logseq.Editor.editBlock(e.dataset.macro).catch((err) => report(new Error('Could not open the block for editing.', { cause: err }))),
     dqOpen: (e: { dataset: { macro: string } }) => openPanel(e.dataset.macro).catch(report),
-    dqToggleLabels: (e: { dataset: { macro: string } }) => toggleLabels(e.dataset.macro).catch(report),
   });
 
   logseq.Editor.registerSlashCommand('Data query', async () => {
