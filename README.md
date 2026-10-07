@@ -1,15 +1,17 @@
 # Data Query for Logseq
 
+> **Beta.** Works with Logseq 0.10.x (Markdown/file graphs). Feedback and bug reports are welcome in [Issues](https://github.com/gyp0bt/logseq-dataquery/issues).
+
 Turn blocks with properties into a typed table, scatter plot or bar chart — right where you write them.
 
 ```
 - Seed sweep
-  - {{renderer :DQscatter, #work/nsb x:score y:loss color:seed}}
-  - run-a #work/nsb
+  - {{renderer :DQscatter, #experiment x:score y:loss color:seed}}
+  - run-a #experiment
     seed:: 0
     score:: 0.96
     loss:: 1.27/1.31/1.29
-  - run-b #work/nsb
+  - run-b #experiment
     seed:: 1
     score:: 1.10
     loss:: 0.88
@@ -39,7 +41,7 @@ Terms are separated by spaces and all must hold. An empty query shows every prop
 
 | Term | Meaning | Example |
 |---|---|---|
-| `#tag` `#[[a b]]` `[[page]]` | Blocks that reference the page (tags on ancestors count) | `#work/nsb` |
+| `#tag` `#[[a b]]` `[[page]]` | Blocks that reference the page (tags on ancestors count) | `#experiment` |
 | `key op value` | Filter. `op` is `== != < <= > >=` (`=` means `==`) | `seed==0` `gre-interp<0` |
 | `name:value` | Setting (below) | `x:gre-thin` `sort:-r2` |
 | `key` | Blocks that have the property | `gre-thin` |
@@ -104,7 +106,11 @@ score-*:: ratio
 - `category` — discrete values (good for `color:` and bar `x:`), even when they look like numbers
 - `ratio` — a value divided by its threshold. Charts draw a dashed line at 1.00, a scatter with both axes `ratio` shades the passing corner, and table cells turn green below 1.00 and red at or above
 
-## Install (development)
+## Install
+
+Logseq → Plugins → Marketplace → search "Data Query".
+
+### From source
 
 ```
 npm install

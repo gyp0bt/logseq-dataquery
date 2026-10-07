@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Package
+        run: |
+          mkdir logseq-dataquery
+          cp -r dist README.md LICENSE package.json icon.svg logseq-dataquery/
+          zip -r logseq-dataquery-${GITHUB_REF_NAME}.zip logseq-dataquery
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" logseq-dataquery-${GITHUB_REF_NAME}.zip package.json --title "$GITHUB_REF_NAME" --notes "Beta release."
