@@ -6,7 +6,7 @@ import { applyControl, errorText, jumpTo, readMacro, saveDsl, type SetEvent } fr
 import type { LogseqLike } from './host/api';
 import { Engine } from './host/engine';
 import { InlineViews } from './host/inline';
-import { Interact } from './host/interact';
+import { FIELD_SELECTOR, Interact } from './host/interact';
 import inlineCss from './style/inline.css?raw';
 import tokensCss from './style/tokens.css?raw';
 
@@ -60,6 +60,10 @@ async function main(): Promise<void> {
       const el = slotEl(slot);
       return el === undefined || !!el?.querySelector('.dq');
     },
+    busy: (slot) => {
+      const active = slotEl(slot)?.ownerDocument.activeElement;
+      return !!active?.matches(FIELD_SELECTOR) && !!slotEl(slot)?.contains(active);
+    },
   });
 
   try {
@@ -68,6 +72,7 @@ async function main(): Promise<void> {
       view: (uuid) => views.view(uuid),
       report,
       notify: (msg) => void logseq.UI.showMsg(msg, 'success'),
+      resume: () => void views.resume().catch(report),
     });
     const off = interact.install();
     logseq.beforeunload(async () => off());

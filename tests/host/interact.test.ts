@@ -76,6 +76,74 @@ describe('query field', () => {
   });
 });
 
+/**
+ * Logseq around the view, as on the device: its injected-UI wrapper forwards a click to the
+ * nearest `data-on-click` model (bubble phase), and the block content above it stops mouse
+ * events (React `stopPropagation`). Our listeners sit on the document in the capture phase.
+ */
+describe('query field inside Logseq', () => {
+  let models: string[];
+  beforeEach(() => {
+    models = [];
+    const view = document.querySelector('.dq')!;
+    const wrap = document.createElement('div');
+    wrap.className = 'block-content';
+    const injected = document.createElement('div');
+    view.replaceWith(wrap);
+    wrap.appendChild(injected);
+    injected.appendChild(view);
+    for (const t of ['mousedown', 'mouseover', 'click']) wrap.addEventListener(t, (e) => e.stopPropagation());
+    injected.addEventListener('click', (e) => {
+      const trig = (e.target as Element).closest<HTMLElement>('[data-on-click]');
+      if (trig) models.push(trig.dataset.onClick!);
+    });
+  });
+  const press = (el: Element, type: string) => el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons: 1 }));
+
+  it('click puts the caret in the field; typing and Enter save; no raw block editing', () => {
+    const f = field();
+    expect(press(f, 'pointerdown')).toBe(true);
+    expect(press(f, 'mousedown')).toBe(true); // nothing cancels the default: the caret goes in
+    f.focus();
+    press(f, 'mouseup');
+    expect(press(f, 'click')).toBe(true);
+    expect(document.activeElement).toBe(f);
+    f.value = 'sort:y';
+    f.setSelectionRange(0, 4); // selecting text works
+    expect(f.selectionEnd).toBe(4);
+    expect(key('Enter')).toBe(false); // Enter is ours (no newline)
+    expect(deps.submit).toHaveBeenCalledWith('m', 'sort:y');
+    expect(models).not.toContain('dqEdit');
+    // Saving leaves the field, so the repaint with the new query is not held back.
+    expect(document.activeElement).not.toBe(f);
+  });
+
+  it('a drag that starts in the field and ends outside (selecting text) does not open the block editor', () => {
+    const f = field();
+    press(f, 'pointerdown');
+    press(f, 'mousedown');
+    f.focus();
+    // The browser targets the click at the nearest common ancestor: the view head.
+    press(document.querySelector('.dq-head')!, 'click');
+    expect(models).not.toContain('dqEdit');
+    // A plain click on blank space still opens it.
+    press(document.querySelector('.dq-head')!, 'pointerdown');
+    press(document.querySelector('.dq-head')!, 'click');
+    expect(models).toContain('dqEdit');
+  });
+
+  it('leaving the field asks for the held-back repaint', () => {
+    const resume = vi.fn();
+    off();
+    ui = new Interact(document, { ...deps, resume });
+    off = ui.install();
+    const f = field();
+    f.focus();
+    f.blur();
+    expect(resume).toHaveBeenCalled();
+  });
+});
+
 describe('chart and side buttons', () => {
   const dom = () => document.querySelector('svg.dq-chart')!.getAttribute('data-dom')!.split(',').map(Number);
 

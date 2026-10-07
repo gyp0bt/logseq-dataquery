@@ -10,7 +10,12 @@ export interface InteractDeps {
   report(e: unknown): void;
   /** A short confirmation for the user. */
   notify(msg: string): void;
+  /** A field of a view lost the focus: paint what was held back while it was being typed in. */
+  resume?(): void;
 }
+
+/** Fields typed into inside a view; a repaint would wipe them, so it waits until they are left. */
+export const FIELD_SELECTOR = 'input.dq-dsl, input.dq-axin';
 
 /**
  * What a chart shows besides the macro: zoom, enlarged, Ctrl+wheel scale and traces hidden by a
@@ -41,6 +46,8 @@ export class Interact {
   private observers = new WeakMap<Element, ResizeObserver>();
   private drag?: { box: HTMLElement; svg: SVGSVGElement; x: number; y: number; rect: SVGRectElement };
   private pan?: { el: HTMLElement; x: number };
+  /** Where the last mouse press landed, to tell a click from a drag that ended elsewhere. */
+  private pressed?: Element | null;
   private axDrag?: { box: HTMLElement; ax: 'x' | 'y'; end: AxisEnd; d: Domain; a: NonNullable<ReturnType<typeof areaOf>>; from: { x: number; y: number }; cx: number; cy: number; moved: boolean };
 
   constructor(private doc: Document, private deps: InteractDeps) {}
@@ -50,6 +57,9 @@ export class Interact {
       // Capture phase: Logseq's block handlers (React 17, delegated at its root) stop the
       // propagation of mouseover and others, so a bubbling listener on the document never hears them.
       ['keydown', (e) => this.onKey(e as KeyboardEvent), true],
+      ['pointerdown', (e) => (this.pressed = e.target as Element | null), true],
+      ['mousedown', (e) => (this.pressed = e.target as Element | null), true],
+      ['focusout', (e) => this.onFocusOut(e as FocusEvent), true],
       ['click', (e) => this.onClick(e as MouseEvent), true],
       ['dblclick', (e) => this.onDblClick(e as MouseEvent), true],
       ['mouseover', (e) => this.onOver(e as MouseEvent), true],
@@ -181,8 +191,14 @@ export class Interact {
         return;
       }
       this.showError(input, '');
+      // Leave the field first: while it has the focus, repaints (the saved query among them) wait.
+      input.blur();
       this.deps.submit(input.dataset.macro!, dsl).catch((err) => this.deps.report(err));
     }
+  }
+
+  private onFocusOut(e: FocusEvent): void {
+    if ((e.target as Element | null)?.matches?.(FIELD_SELECTOR)) this.deps.resume?.();
   }
 
   private showError(input: HTMLInputElement, html: string): void {
@@ -195,6 +211,14 @@ export class Interact {
 
   private onClick(e: MouseEvent): void {
     const t = e.target as Element | null;
+    // A press in a field released outside it (selecting text past its end) clicks their common
+    // ancestor, whose nearest `data-on-click` is the view's "edit the block". It is no click: stop it
+    // here, in the capture phase, before Logseq's delegation on the view hears it.
+    const field = this.pressed?.closest?.('.dq input, .dq select, .dq textarea');
+    if (field && t && !field.contains(t)) {
+      e.stopPropagation();
+      return;
+    }
     const fold = t?.closest?.('.dq-fold [data-act="table"]') as HTMLElement | null;
     if (fold) return this.toggleTable(fold);
     const act = t?.closest?.('.dq-side [data-act]') as HTMLElement | null;
@@ -214,8 +238,8 @@ export class Interact {
   }
 
   /**
-   * A point opens the table if folded, then marks its rows: those sharing its group key (the merged
-   * `by` row, or every row of a `color` group), else the block's own row.
+   * A point opens the table if folded, then marks its rows: those sharing its group key (every row
+   * of its `color` group, or the merged `by` row), else the block's own row.
    */
   private highlightRow(pt: SVGElement): void {
     const { uuid, key } = pt.dataset;

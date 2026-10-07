@@ -209,6 +209,29 @@ describe('InlineViews', () => {
     await views.refreshAll();
     expect(provide).toHaveBeenCalledTimes(2);
   });
+  it('a repaint waits while the query field is focused, so typing is not wiped; it lands on resume', async () => {
+    const api = graph();
+    const provide = vi.fn();
+    let busy = false;
+    const engine = new Engine(api, () => 'dataquery/types');
+    const views = new InlineViews(engine, provide, () => true, { busy: () => busy });
+    await views.show('s1', 'm', 'table', '#work/nsb sort:gre');
+    provide.mockClear();
+    busy = true;
+    await api.Editor.updateBlock('a', 'A\nrun:: a\ngre:: 2.5');
+    engine.invalidate();
+    await views.refreshAll();
+    // A re-slot of the same element (its old view still inside) waits too.
+    await views.show('s2', 'm', 'table', '#work/nsb sort:gre');
+    expect(provide).not.toHaveBeenCalled();
+    busy = false;
+    await views.resume();
+    expect(provide.mock.calls.map((c) => c[0]).sort()).toEqual(['s1', 's2']);
+    expect(provide.mock.calls[0][1]).toContain('2.5');
+    provide.mockClear();
+    await views.resume();
+    expect(provide).not.toHaveBeenCalled();
+  });
   it('shows failures inside the view instead of throwing', async () => {
     const api = graph();
     api.DB.datascriptQuery.mockRejectedValueOnce(new Error('boom'));

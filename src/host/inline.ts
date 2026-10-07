@@ -4,7 +4,7 @@ import { renderInline, type InlineInput, type ViewData } from '../core/view';
 import { errorText } from './actions';
 import type { Engine } from './engine';
 
-interface SlotInfo { uuid: string; kind: Kind; dsl: string; gen: number; last?: string }
+interface SlotInfo { uuid: string; kind: Kind; dsl: string; gen: number; last?: string; held?: boolean }
 
 export interface InlineHooks {
   /** The query as the block holds it now; a refresh re-reads it so a stale slot query does not stick. */
@@ -15,6 +15,11 @@ export interface InlineHooks {
   tableOpen?(uuid: string): boolean;
   /** Whether the slot still shows our last paint; an emptied slot is painted again even if unchanged. */
   painted?(slot: string): boolean;
+  /**
+   * Whether the user is typing in a field of the slot's view. Painting replaces the view's HTML,
+   * which would drop the focus and the half-typed text, so the repaint waits for `resume()`.
+   */
+  busy?(slot: string): boolean;
 }
 
 /** Tracks rendered macro slots so DB changes can re-render them. */
@@ -33,6 +38,15 @@ export class InlineViews {
   async show(slot: string, uuid: string, kind: Kind, dsl: string): Promise<void> {
     this.slots.set(slot, { uuid, kind, dsl, gen: 0 });
     await this.render(slot, false);
+  }
+
+  /** Paint what was held back while a field had the focus (called when the field is left). */
+  async resume(): Promise<void> {
+    for (const [slot, info] of [...this.slots]) {
+      if (!info.held) continue;
+      if (!this.exists(slot)) this.slots.delete(slot);
+      else await this.render(slot, true);
+    }
   }
 
   async refreshAll(): Promise<void> {
@@ -72,6 +86,11 @@ export class InlineViews {
     const key = renderInline(input);
     // A macro rewrite both re-slots the macro and fires a DB change: paint once, not twice.
     if (info.last === key && (this.hooks.painted?.(slot) ?? true)) return;
+    if (this.hooks.busy?.(slot)) {
+      info.held = true;
+      return;
+    }
+    info.held = false;
     info.last = key;
     const opts = this.hooks.chartOpts?.(uuid);
     const open = this.hooks.tableOpen?.(uuid) ?? false;
