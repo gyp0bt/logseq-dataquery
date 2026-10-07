@@ -2,7 +2,7 @@
    wider or, once contained, collapse to zero. Give slots holding a view the full block width. */
 .block-content .lsp-hook-ui-slot:has(.dq),
 .block-content .lsp-hook-ui-slot:has(.dq) [data-injected-ui] { display: flex; width: 100%; min-width: 0; }
-.dq { display: block; box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; contain: inline-size; border: 1px solid var(--dq-line); border-radius: 8px; overflow: hidden; background: var(--dq-bg); color: var(--dq-fg); font-size: 1em; line-height: 1.5; margin: 4px 0; }
+.dq { display: block; box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; container-type: inline-size; border: 1px solid var(--dq-line); border-radius: 8px; overflow: hidden; background: var(--dq-bg); color: var(--dq-fg); font-size: 1em; line-height: 1.5; margin: 4px 0; }
 .dq-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 10px; border-bottom: 1px solid var(--dq-line); }
 .dq-dsl { flex: 1 1 200px; min-width: 0; font: inherit; font-size: 0.9375em; color: var(--dq-fg); background: var(--dq-code); border: 1px solid transparent; border-radius: 5px; padding: 3px 8px; }
 .dq-dsl:focus { outline: none; border-color: var(--dq-accent); }
@@ -13,8 +13,18 @@
 .dq-msg p { margin: 2px 0 0; color: var(--dq-fail); }
 .dq-meta { font-size: 0.875em; color: var(--dq-muted); font-variant-numeric: tabular-nums; }
 .dq-warn { color: var(--dq-warn); font-weight: 600; }
-.dq-btn { font: inherit; font-size: 0.875em; color: var(--dq-accent); background: transparent; border: 1px solid var(--dq-line); border-radius: 5px; padding: 2px 9px; cursor: pointer; }
-.dq-btn:hover { border-color: var(--dq-accent); }
+.dq-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.dq-main { min-width: 0; }
+/* Right-hand column of controls; on a narrow block it moves above the chart as a wrapping row. */
+.dq-side { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-left: 1px solid var(--dq-line); font-size: 0.8125em; }
+@container (max-width: 520px) {
+  .dq-body { grid-template-columns: minmax(0, 1fr); }
+  .dq-side { grid-row: 1; flex-direction: row; flex-wrap: wrap; align-items: center; border-left: 0; border-bottom: 1px solid var(--dq-line); }
+}
+.dq-ctl { display: flex; flex-direction: column; gap: 1px; color: var(--dq-muted); }
+.dq-sel { font: inherit; max-width: 9em; color: var(--dq-fg); background: var(--dq-code); border: 1px solid var(--dq-line); border-radius: 4px; padding: 1px 3px; }
+.dq-sb { font: inherit; min-width: 2.4em; color: var(--dq-fg); background: transparent; border: 1px solid var(--dq-line); border-radius: 4px; padding: 2px 6px; cursor: pointer; }
+.dq-sb:hover, .dq-sel:hover { border-color: var(--dq-accent); }
 .dq-chartbox { position: relative; padding: 6px 8px 2px; border-bottom: 1px solid var(--dq-line); }
 .dq-chartbox .dq-legend { color: var(--dq-plot-fg); }
 /* Look copied from plotly's default template: blue-grey plot area, white grid, no axis box,
@@ -35,11 +45,12 @@
 .dq-chart .dq-bar:hover { filter: brightness(1.1); }
 .dq-chart .dq-whisker { pointer-events: none; }
 .dq-chart .dq-whisker line { stroke: var(--dq-plot-fg); stroke-width: 1.3; }
+.dq-chart .dq-err { pointer-events: none; }
+.dq-chart .dq-err line { stroke: var(--dq-plot-fg); stroke-width: 1; stroke-opacity: 0.7; }
+.dq-chart .dq-band { stroke: none; pointer-events: none; }
+.dq-chart .dq-line { stroke-width: 1.5; pointer-events: none; }
+.dq-chart .dq-clip { overflow: hidden; pointer-events: none; }
 .dq-chart .dq-drag { fill: var(--dq-plot-fg); fill-opacity: 0.1; stroke: var(--dq-plot-fg); stroke-dasharray: 3 3; pointer-events: none; }
-.dq-modebar { position: absolute; top: 6px; right: 10px; z-index: 1; display: flex; gap: 0; opacity: 0; transition: opacity 0.15s; }
-.dq-chartbox:hover .dq-modebar { opacity: 1; }
-.dq-mb { font: 16px/1 "Open Sans", verdana, arial, sans-serif; width: 26px; height: 24px; color: var(--dq-plot-fg); opacity: 0.35; background: transparent; border: 0; cursor: pointer; }
-.dq-mb:hover { opacity: 0.8; }
 .dq-tip { position: absolute; z-index: 2; pointer-events: none; white-space: pre; font: 13px/1.4 Arial, sans-serif; color: #fff; background: var(--dq-c0); border: 1px solid #fff; border-radius: 2px; padding: 3px 6px; }
 .dq-tip[hidden] { display: none; }
 .dq-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: 0.875em; color: var(--dq-muted); padding: 2px 0 6px; }
@@ -47,10 +58,12 @@
 .dq-dot { border-radius: 50%; }
 .dq-square { border-radius: 2px; }
 .dq-dash { width: 16px; height: 0; border-top: 2px dashed; vertical-align: 3px; }
-.dq-tbl { overflow-x: auto; }
+.dq-tbl { overflow: auto; max-height: 32em; }
 .dq table { border-collapse: collapse; width: 100%; font-size: 1em; font-variant-numeric: tabular-nums; margin: 0; }
 .dq th, .dq td { padding: 0.35em 0.75em; border-bottom: 1px solid var(--dq-line); white-space: nowrap; text-align: left; }
 .dq th { font-weight: 600; }
+.dq th.dq-sortable { cursor: pointer; user-select: none; }
+.dq th.dq-sortable:hover { color: var(--dq-accent); }
 .dq .dq-type { display: block; font-size: 0.75em; font-weight: 400; color: var(--dq-muted); }
 .dq .dq-num { text-align: right; }
 .dq .dq-link { color: var(--dq-accent); cursor: pointer; }

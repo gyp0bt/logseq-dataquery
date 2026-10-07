@@ -1,15 +1,14 @@
-import { parseDsl } from '../core/dsl';
-import { renderInline } from '../core/view';
+import { parseQuery, type Kind } from '../core/dsl';
+import { renderInline, type ViewData } from '../core/view';
 import { errorText } from './actions';
 import type { Engine } from './engine';
-import type { ChartData } from './interact';
 
-interface SlotInfo { uuid: string; dsl: string; gen: number }
+interface SlotInfo { uuid: string; kind: Kind; dsl: string; gen: number }
 
 /** Tracks rendered macro slots so DB changes can re-render them. */
 export class InlineViews {
   private slots = new Map<string, SlotInfo>();
-  private charts = new Map<string, ChartData>();
+  private views = new Map<string, ViewData>();
 
   constructor(
     private engine: Engine,
@@ -17,8 +16,8 @@ export class InlineViews {
     private exists: (slot: string) => boolean,
   ) {}
 
-  async show(slot: string, uuid: string, dsl: string): Promise<void> {
-    this.slots.set(slot, { uuid, dsl, gen: 0 });
+  async show(slot: string, uuid: string, kind: Kind, dsl: string): Promise<void> {
+    this.slots.set(slot, { uuid, kind, dsl, gen: 0 });
     await this.render(slot);
   }
 
@@ -32,27 +31,27 @@ export class InlineViews {
   private async render(slot: string): Promise<void> {
     const info = this.slots.get(slot)!;
     const gen = ++info.gen;
-    const { uuid, dsl } = info;
+    const { uuid, kind, dsl } = info;
     let html: string;
-    let chart: ChartData | undefined;
+    let view: ViewData | undefined;
     try {
-      const ev = await this.engine.evaluate(dsl, uuid);
-      html = renderInline({ macroUuid: uuid, dsl, ...ev });
-      const plot = ev.parsed.ok ? ev.parsed.query.plot : undefined;
-      if (plot && ev.result && ev.parsed.ok) chart = { rows: ev.result.rows, plot, types: ev.result.types, mergeBy: ev.parsed.query.mergeBy };
+      const ev = await this.engine.evaluate(dsl, kind, uuid);
+      html = renderInline({ kind, macroUuid: uuid, dsl, ...ev });
+      if (ev.result && ev.parsed.ok) view = { kind, query: ev.parsed.query, result: ev.result };
     } catch (e) {
       console.error('[dataquery] could not render the query view', e);
-      html = renderInline({ macroUuid: uuid, dsl, parsed: parseDsl(dsl), error: errorText(e) });
+      html = renderInline({ kind, macroUuid: uuid, dsl, parsed: parseQuery(dsl), error: errorText(e) });
     }
     // A slower render that started on older data must not overwrite a newer one.
     if (this.slots.get(slot) === info && info.gen === gen) {
-      if (chart) this.charts.set(uuid, chart);
-      else this.charts.delete(uuid);
+      if (view) this.views.set(uuid, view);
+      else this.views.delete(uuid);
       this.provide(slot, html);
     }
   }
 
-  chart(uuid: string): ChartData | undefined {
-    return this.charts.get(uuid);
+  /** What the view of `uuid` last showed: rows, columns, axes and the query. */
+  view(uuid: string): ViewData | undefined {
+    return this.views.get(uuid);
   }
 }

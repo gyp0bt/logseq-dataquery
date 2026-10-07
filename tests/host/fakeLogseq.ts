@@ -60,10 +60,6 @@ export function fakeLogseq(pages: Record<string, FakeBlock[]>) {
       updateBlock: vi.fn(async (uuid: string, content: string) => {
         byUuid(uuid)!.b.content = content;
       }),
-      upsertBlockProperty: vi.fn(async (_u: string, _k: string, _v: unknown) => {}),
-      insertBlock: vi.fn(async (_u: string, _c: string, _o?: unknown) => null),
-      appendBlockInPage: vi.fn(async (_p: string, _c: string) => null),
-      createPage: vi.fn(async (_n: string, _p?: unknown, _o?: unknown) => null),
       scrollToBlockInPage: vi.fn((_p: string, _u: string) => {}),
     },
   };

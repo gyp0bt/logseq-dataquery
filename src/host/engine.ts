@@ -1,9 +1,9 @@
-import { parseDsl, type ParseResult } from '../core/dsl';
+import { parseQuery, type Kind, type ParseResult } from '../core/dsl';
 import { computeTypes, runQuery, type QueryResult } from '../core/query';
 import type { SourceBlock } from '../core/rows';
 import type { TypeOverrides, ValueType } from '../core/types';
 import type { LogseqLike } from './api';
-import { fetchBlocks, fetchScope, fetchTypeOverrides } from './collect';
+import { fetchBlocks, fetchOrder, fetchTypeOverrides } from './collect';
 
 export interface Evaluation {
   parsed: ParseResult;
@@ -39,12 +39,12 @@ export class Engine {
     return this.snapshot;
   }
 
-  async evaluate(dsl: string, macroUuid: string): Promise<Evaluation> {
-    const parsed = parseDsl(dsl);
+  async evaluate(dsl: string, kind: Kind, macroUuid: string): Promise<Evaluation> {
+    const parsed = parseQuery(dsl);
     if (!parsed.ok) return { parsed };
     const { blocks, overrides, types } = await this.load();
-    const scope = await fetchScope(this.api, macroUuid);
-    const result = runQuery(parsed.query, { blocks, types, macroUuid, ...scope });
+    const order = await fetchOrder(this.api, macroUuid);
+    const result = runQuery(parsed.query, kind, { blocks, types, macroUuid, order });
     result.warnings.unshift(...overrides.warnings);
     return { parsed, result };
   }

@@ -61,16 +61,8 @@ export async function fetchTypeOverrides(api: LogseqLike, typesPage: string): Pr
   return parseTypeOverrides(parseContent(String(tree[0].content ?? '')).props);
 }
 
-export interface Scope {
-  macroPage: string;
-  /** Blocks under the macro's parent, or the whole page when the macro is top level. */
-  hereIds: Set<string>;
-  /** Outline position of every block on the macro's page. */
-  order: Map<string, number>;
-}
-
-/** One walk of the macro's page gives both the `here` set and the outline order. */
-export async function fetchScope(api: LogseqLike, macroUuid: string): Promise<Scope> {
+/** Outline position of every block on the macro's page, so rows keep the order they were written in. */
+export async function fetchOrder(api: LogseqLike, macroUuid: string): Promise<Map<string, number>> {
   let macro: any;
   let page: any;
   let tree: any[] | null;
@@ -83,18 +75,13 @@ export async function fetchScope(api: LogseqLike, macroUuid: string): Promise<Sc
   }
   if (!macro || !page) throw new Error(`The query block ${macroUuid} was not found.`);
   const order = new Map<string, number>();
-  const hereIds = new Set<string>();
-  const topLevel = macro.parent.id === macro.page.id;
-  const walk = (bs: any[] | null | undefined, inside: boolean) => {
+  const walk = (bs: any[] | null | undefined) => {
     for (const b of bs ?? []) {
       if (!b || typeof b !== 'object' || Array.isArray(b)) continue;
-      if (typeof b.uuid === 'string') {
-        order.set(b.uuid, order.size);
-        if (inside) hereIds.add(b.uuid);
-      }
-      walk(b.children, inside || b.id === macro.parent.id);
+      if (typeof b.uuid === 'string') order.set(b.uuid, order.size);
+      walk(b.children);
     }
   };
-  walk(tree, topLevel);
-  return { macroPage: String(page.name ?? '').toLowerCase(), hereIds, order };
+  walk(tree);
+  return order;
 }

@@ -1,17 +1,15 @@
-import { barSvg, scatterSvg, type Domain } from '../core/chart';
-import { parseDsl, type Plot } from '../core/dsl';
-import type { Row } from '../core/rows';
-import type { ValueType } from '../core/types';
-import { errorHtml } from '../core/view';
-
-/** What a chart needs to be drawn again at another size or zoom. */
-export interface ChartData { rows: Row[]; plot: Plot; types: Record<string, ValueType>; mergeBy?: string }
+import type { Domain } from '../core/chart';
+import { parseQuery } from '../core/dsl';
+import { chartOf, errorHtml, toCsv, type ViewData } from '../core/view';
 
 export interface InteractDeps {
   /** Write a valid query back into the macro. */
   submit(uuid: string, dsl: string): Promise<void>;
-  chart(uuid: string): ChartData | undefined;
+  /** What the view of a macro last showed, to redraw its chart or copy its table. */
+  view(uuid: string): ViewData | undefined;
   report(e: unknown): void;
+  /** A short confirmation for the user. */
+  notify(msg: string): void;
 }
 
 interface ChartState { view?: Domain; big: boolean }
@@ -28,6 +26,7 @@ export class Interact {
   private state = new Map<string, ChartState>();
   private observers = new WeakMap<Element, ResizeObserver>();
   private drag?: { box: HTMLElement; svg: SVGSVGElement; x: number; y: number; rect: SVGRectElement };
+  private pan?: { el: HTMLElement; x: number; y: number };
 
   constructor(private doc: Document, private deps: InteractDeps) {}
 
@@ -41,6 +40,11 @@ export class Interact {
       ['pointerdown', (e) => this.onDown(e as PointerEvent), false],
       ['pointermove', (e) => this.onMove(e as PointerEvent), false],
       ['pointerup', (e) => this.onUp(e as PointerEvent), false],
+      // Middle button in a table pans it; on Linux its default would paste the primary selection
+      // or start autoscroll, so those are stopped inside our tables.
+      ['mousedown', (e) => this.stopMiddle(e as MouseEvent), true],
+      ['mouseup', (e) => this.stopMiddle(e as MouseEvent), true],
+      ['auxclick', (e) => this.stopMiddle(e as MouseEvent), true],
     ];
     const guard = (f: (e: Event) => void) => (e: Event) => {
       try {
@@ -91,17 +95,15 @@ export class Interact {
   }
 
   draw(box: HTMLElement): void {
-    const data = this.deps.chart(box.dataset.macro!);
+    const data = this.deps.view(box.dataset.macro!);
     const plotEl = box.querySelector<HTMLElement>('.dq-plot');
     const w = plotEl?.clientWidth ?? 0;
     if (!data || !plotEl || w <= 0) return;
     const st = this.stateOf(box);
     const winH = this.doc.defaultView?.innerHeight ?? 800;
     const size = { w, h: st.big ? Math.max(HEIGHT, Math.round(winH * 0.7)) : HEIGHT };
-    plotEl.innerHTML =
-      data.plot.kind === 'scatter'
-        ? scatterSvg(data.rows, data.plot, data.types, data.mergeBy, { size, view: st.view }).html
-        : barSvg(data.rows, data.plot, data.types, { size }).html;
+    const chart = chartOf(data, { size, view: st.view });
+    if (chart) plotEl.innerHTML = chart.html;
   }
 
   // ---- query field ----
@@ -119,7 +121,7 @@ export class Interact {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const dsl = input.value.replace(/[\r\n]+/g, ' ').trim();
-      const parsed = parseDsl(dsl);
+      const parsed = parseQuery(dsl);
       if (!parsed.ok) {
         this.showError(input, errorHtml(dsl, parsed.error.message, parsed.error.col));
         return;
@@ -139,8 +141,8 @@ export class Interact {
 
   private onClick(e: MouseEvent): void {
     const t = e.target as Element | null;
-    const act = t?.closest?.('.dq-mb') as HTMLElement | null;
-    if (act) return this.modebar(act);
+    const act = t?.closest?.('.dq-side [data-act]') as HTMLElement | null;
+    if (act) return this.sideAction(act);
     const pt = t?.closest?.('.dq-pt') as SVGElement | null;
     if (pt) this.highlightRow(pt);
   }
@@ -156,25 +158,29 @@ export class Interact {
     tr.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
-  private modebar(btn: HTMLElement): void {
-    const box = btn.closest<HTMLElement>('.dq-chartbox');
+  /** Buttons in the side column that change only what is on screen, not the macro. */
+  private sideAction(btn: HTMLElement): void {
+    const act = btn.dataset.act;
+    if (act === 'csv') return this.copyCsv(btn);
+    const box = btn.closest('.dq')?.querySelector<HTMLElement>('.dq-chartbox');
     if (!box) return;
     const st = this.stateOf(box);
-    const act = btn.dataset.act;
     if (act === 'expand') {
       st.big = !st.big;
       box.classList.toggle('dq-big', st.big);
-    } else if (act === 'reset') {
-      st.view = undefined;
-    } else {
-      const d = currentDomain(box);
-      if (!d) return;
-      const k = act === 'zoomin' ? 0.5 : 2;
-      const cx = (d.x0 + d.x1) / 2, cy = (d.y0 + d.y1) / 2;
-      const hx = ((d.x1 - d.x0) * k) / 2, hy = ((d.y1 - d.y0) * k) / 2;
-      st.view = { x0: cx - hx, x1: cx + hx, y0: cy - hy, y1: cy + hy };
-    }
+    } else if (act === 'reset') st.view = undefined;
     this.draw(box);
+  }
+
+  private copyCsv(btn: HTMLElement): void {
+    const uuid = btn.closest<HTMLElement>('.dq-side')?.dataset.macro;
+    const data = uuid ? this.deps.view(uuid) : undefined;
+    if (!data) return this.deps.report(new Error('Nothing to copy yet: the view has not finished drawing.'));
+    const n = data.result.rows.length;
+    const fail = (cause: unknown) => this.deps.report(new Error('Could not copy the table as CSV.', { cause }));
+    const clip = this.doc.defaultView?.navigator.clipboard;
+    if (!clip) return fail(new Error('The clipboard is not available in this window.'));
+    clip.writeText(toCsv(data.result, data.query.by)).then(() => this.deps.notify(`${n} rows copied`), fail);
   }
 
   private onDblClick(e: MouseEvent): void {
@@ -206,7 +212,30 @@ export class Interact {
     if (tip) tip.hidden = true;
   }
 
+  // ---- table pan ----
+
+  private stopMiddle(e: MouseEvent): void {
+    if (e.button === 1 && (e.target as Element | null)?.closest?.('.dq-tbl')) e.preventDefault();
+  }
+
+  private startPan(e: PointerEvent): boolean {
+    const el = e.button === 1 ? ((e.target as Element | null)?.closest?.('.dq-tbl') as HTMLElement | null) : null;
+    if (!el) return false;
+    e.preventDefault();
+    el.style.cursor = 'grabbing';
+    this.pan = { el, x: e.clientX, y: e.clientY };
+    return true;
+  }
+
+  private endPan(): void {
+    if (this.pan) this.pan.el.style.cursor = '';
+    this.pan = undefined;
+  }
+
+  // ---- drag zoom ----
+
   private onDown(e: PointerEvent): void {
+    if (this.startPan(e)) return;
     const area = (e.target as Element | null)?.closest?.('.dq-area');
     const svg = area?.closest('svg') as SVGSVGElement | null;
     const box = svg?.closest<HTMLElement>('.dq-chartbox');
@@ -221,6 +250,15 @@ export class Interact {
   }
 
   private onMove(e: PointerEvent): void {
+    if (this.pan) {
+      // The button was released outside the window: stop following the pointer.
+      if (!(e.buttons & 4)) return this.endPan();
+      const { el, x, y } = this.pan;
+      el.scrollLeft -= e.clientX - x;
+      el.scrollTop -= e.clientY - y;
+      this.pan = { el, x: e.clientX, y: e.clientY };
+      return;
+    }
     if (!this.drag) return;
     const { svg, x, y, rect } = this.drag;
     const p = clampToArea(svg, local(svg, e));
@@ -231,6 +269,7 @@ export class Interact {
   }
 
   private onUp(e: PointerEvent): void {
+    if (this.pan) return this.endPan();
     if (!this.drag) return;
     const { box, svg, x, y, rect } = this.drag;
     this.drag = undefined;
