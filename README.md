@@ -21,7 +21,7 @@ Three macros, inserted with `/DQ table`, `/DQ scatter` and `/DQ bar`:
 |---|---|---|
 | `{{renderer :DQtable, …}}` | table | CSV |
 | `{{renderer :DQscatter, …}}` | scatter plot + folded table | X▾ Y▾ Color▾ ± ▤ ⟲ ⤢ CSV |
-| `{{renderer :DQbar, …}}` | bar chart (means, min–max whiskers) + folded table | X▾ Y▾ ⤢ CSV |
+| `{{renderer :DQbar, …}}` | bar chart (means, min–max whiskers) + folded table | X▾ Y chips + Y▾ ⤢ CSV |
 
 Keep the comma after the macro name, as with any Logseq renderer.
 
@@ -50,7 +50,7 @@ Terms are separated by spaces and all must hold. An empty query shows every prop
 | Setting | Meaning | Default |
 |---|---|---|
 | `x:` `y:` | Axes. A bar chart takes several: `y:a,b` | Scatter: 1st and 2nd numeric column. Bar: x = 1st category/text column, y = 1st numeric column |
-| `color:` | Scatter colour groups (one legend entry per group) | the `by:` value if set, else one colour |
+| `color:` | Scatter colour groups (one legend entry per group); without `by:` it also groups the points (below) | the `by:` value if set, else one colour |
 | `sort:key` / `sort:-key` | Ascending / descending; clicking a table header cycles it | outline order |
 | `by:run` | Blocks with the same `run` become one row; the newest journal wins and disagreeing cells get ⚠ | no merge |
 | `labels:on` | Write every point's name on the chart | names on hover |
@@ -62,25 +62,25 @@ Edit the query right in the view: change the line at the top and press Enter to 
 
 A property such as `loss:: 1.27/1.31/1.29` (or `1.27, 1.31`) holds several numbers, e.g. one per seed. Charts draw the mean and show the min–max of **y only**; an x cell with several numbers just sits at their mean.
 
-- **Groups (scatter):** with `by:run`, the blocks of one run form a group (the table still merges them into one row); without `by:`, each row is its own group. Within a group, every y number at the same x is pooled.
+- **Groups (scatter):** with `by:run`, the blocks of one run form a group (the table still merges them into one row); without `by:` but with `color:seed`, the rows of one seed form a group; with neither, each row is its own group. Within a group, every y number at the same x is pooled.
 - **One x in a group:** one marker at the mean of y, with a vertical min–max bar (none for a single value).
 - **Several x in a group:** a line through the per-x means in x order, a marker and a min–max bar at each x.
 - **`err:bar` (default, ±):** the bars above. **`err:band` (▤):** a translucent min–max band (like plotly's `fill='tonexty'`) instead of bars along groups with several x; a single-x group keeps its bar. **`err:off`:** means only; lines stay.
-- Colour follows `by:` unless `color:` is given; then each group takes its first row's `color:` value.
-- **Bar:** each row counts at its mean; whiskers span the rows of a category.
-- Hover shows the group (the `by:` value, or the block name), x, and y mean, min, max and n. The table shows the text as written and sorts by the mean.
+- Colour follows `by:` unless `color:` is given; then each group takes its first row's `color:` value (with `color:` alone, the group's own value).
+- **Bar:** each row counts at its mean; whiskers span the rows of a category. With `x:` set to the `by:` key, each category is one `by` value and its whisker spans that value's blocks.
+- Hover shows the group (the `by:` value, else the `color:` value, else the block name), x, and y mean, min, max and n. The table shows the text as written and sorts by the mean.
 
 ## Buttons and pointer
 
-- **X▾ Y▾ Color▾** pick a column (a bar chart's X takes any column). **±** (error bars) and **▤** (band) are on/off toggles; the lit one is active, pressing it turns both off (`err:off`). These and table-header clicks rewrite the macro, so the view is saved with the page; any other text you wrote in the query stays as it was.
+- **X▾ Y▾ Color▾** pick a column (a bar chart's X takes any column; the `by:` key is offered too). A bar chart shows its y columns as chips: **×** removes one (removing the last drops `y:`, back to the default) and **+ Y▾** appends a numeric column not shown yet. **±** (error bars) and **▤** (band) are on/off toggles; the lit one is active, pressing it turns both off (`err:off`). These and table-header clicks rewrite the macro, so the view is saved with the page; any other text you wrote in the query stays as it was.
 - **⟲** resets zoom and shows hidden traces; **⤢** enlarges the chart. Both are temporary and do not touch the macro.
 - **CSV** copies the rows and columns on screen to the clipboard.
-- Charts: hover for values (the title is the `by:` value when set), drag to zoom, double-click blank plot area to reset, click a point to open the table and highlight its row (with `by:`, the merged row).
+- Charts: hover for values (the title is the `by:` value when set), drag to zoom, double-click blank plot area to reset, click a point to open the table and highlight its row (with `by:`, the merged row; with `color:` alone, every row of that colour).
 - Under a scatter or bar chart the table is folded behind a one-line **▸ Table (N rows)** toggle; it stays as you left it while the view redraws. CSV works while folded.
 - Axis handles (scatter): drag the left or right quarter of the x axis to move only that end, the middle to pan; the same for the y axis (bottom end, top end, middle). **Double-click an end** to type its value (Enter applies, Esc or clicking away cancels); double-click the middle to reset that axis only.
 - **Ctrl + wheel** over a chart scales markers, lines and axis text (0.5×–3×); the legend keeps its size. A plain wheel scrolls the page.
 - **Double-click** a legend entry, or a marker, line, band or bar of a trace, to hide that trace; its legend entry stays greyed so you can double-click it back.
-- Bar charts with many categories keep each category at least 56 px wide and scroll sideways.
+- Bar charts with many categories keep each category at least 56 px wide (24 px more per extra y column) and scroll sideways.
 - Zoom, scale and hidden traces are temporary but survive the view being redrawn.
 - Tables: hold the middle button and drag to scroll sideways (the table moves against the pointer, like a scrollbar thumb). The middle click does not paste on Linux.
 
