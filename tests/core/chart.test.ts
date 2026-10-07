@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barGroups, barSvg, colorFor, commonPrefix, dragAxis, formatTick, legendHtml, niceTicks, scatterSvg } from '../../src/core/chart';
+import { barGroups, barSvg, colorFor, commonPrefix, dragAxis, formatTick, legendHtml, niceTicks, scatterSvg, wrapLabel } from '../../src/core/chart';
 import type { Row } from '../../src/core/rows';
 
 const row = (id: string, values: Record<string, string>): Row => ({
@@ -105,6 +105,45 @@ describe('bar', () => {
     const c = barSvg(rows, { ...plot, ys: [...plot.ys] }, types);
     expect(c.html.match(/class="dq-whisker"/g)).toHaveLength(2);
     expect(c.html).toContain('n=3');
+  });
+});
+
+describe('bar category labels wrap', () => {
+  it('fits on one line when short', () => {
+    expect(wrapLabel('gate', 10)).toEqual({ lines: ['gate'], cut: false });
+  });
+  it('breaks at spaces and after - _ / .', () => {
+    expect(wrapLabel('alpha beta', 6).lines).toEqual(['alpha', 'beta']);
+    expect(wrapLabel('mesh-fine_v2', 6).lines).toEqual(['mesh-', 'fine_', 'v2']);
+    expect(wrapLabel('runs/a.b', 6).lines).toEqual(['runs/', 'a.b']);
+  });
+  it('hard-breaks a word with no break points', () => {
+    expect(wrapLabel('abcdefghij', 4).lines).toEqual(['abcd', 'efgh', 'ij']);
+  });
+  it('ends with an ellipsis past the line limit', () => {
+    const w = wrapLabel('aaaa bbbb cccc dddd', 4);
+    expect(w).toEqual({ lines: ['aaaa', 'bbbb', 'ccc…'], cut: true });
+    expect(wrapLabel('aaaa bbbb cccc dddd', 4, 2).lines).toEqual(['aaaa', 'bbb…']);
+  });
+  it('barSvg wraps long labels into tspans, keeps the full text in a title and grows the bottom margin', () => {
+    const long = 'a-very-long-category-name-that-will-not-fit-anywhere-at-all';
+    const rs = [row('u1', { cat: long, y: '1' }), row('u2', { cat: 'short', y: '2' })];
+    const t = { cat: 'string', y: 'number' } as const;
+    const size = { w: 200, h: 300 };
+    const c = barSvg(rs, { x: 'cat', ys: ['y'] }, t, { size });
+    const cat = c.html.match(/<text class="dq-cat"[^]*?<\/text>/)![0];
+    expect(cat.match(/<tspan /g)).toHaveLength(3);
+    expect(cat).toContain(`<title>${long}</title>`);
+    expect(cat).toContain('…');
+    expect(c.html).toMatch(/<text class="dq-cat"[^>]*><tspan x="[\d.]+" dy="0">short<\/tspan><\/text>/);
+    // Three lines push the plot area up compared with one-line labels.
+    const area = (h: string) => Number(h.match(/class="dq-area"[^>]*height="([\d.]+)"/)![1]);
+    const one = barSvg(rs.map((r) => ({ ...r, values: { ...r.values, cat: r.id } })), { x: 'cat', ys: ['y'] }, t, { size });
+    expect(area(c.html)).toBeLessThan(area(one.html));
+    // Ctrl + wheel scale shrinks the characters that fit per line.
+    const big = barSvg(rs, { x: 'cat', ys: ['y'] }, t, { size, scale: 2 });
+    const first = (h: string) => h.match(/<text class="dq-cat"[^>]*>(?:<title>[^<]*<\/title>)?<tspan[^>]*>([^<]*)</)![1];
+    expect(first(big.html).length).toBeLessThan(first(c.html).length);
   });
 });
 
@@ -289,10 +328,14 @@ describe('scatter groups by by:', () => {
     expect(c.html).not.toContain('dq-err');
     expect(c.html).not.toContain('dq-band');
   });
-  it('an explicit color: colours each group by the value of its first row', () => {
+  it('color: wins over by: the groups, their hover titles and row keys follow the colour value', () => {
     const c = draw([...one, ...many], 'bar', 'seed');
-    expect(c.legend.filter((l) => l.trace).map((l) => l.label)).toEqual(['seed = 0', 'seed = (none)']);
-    expect(c.html).toMatch(/<circle[^>]*data-trace="seed = 0"[^>]*data-key="r1"/);
+    expect(c.legend.filter((l) => l.trace).map((l) => l.label)).toEqual(['seed = 0', 'seed = 1', 'seed = (none)']);
+    // r1's two blocks split by seed: each is its own marker now.
+    expect(c.html).toMatch(/<circle[^>]*data-trace="seed = 0"[^>]*data-key="0" data-tip="0\nx: 2\ny: mean 1.29/);
+    expect(c.html).toMatch(/<circle[^>]*data-trace="seed = 1"[^>]*data-key="1" data-tip="1\n/);
+    // The four seedless r2 blocks pool into one (none) group with a line.
+    expect(c.html).toMatch(/<polyline class="dq-line"[^>]*data-trace="seed = \(none\)"/);
   });
 });
 

@@ -33,11 +33,43 @@ export const MIN_CAT_W = 56;
 export const MIN_SERIES_W = 24;
 
 interface Box extends Area { W: number; H: number; B: number; s: number; sized: boolean; reqW?: number }
-function box(size: ChartSize | undefined, s: number, minPW = 0): Box {
-  const L = Math.round(64 * s), R = 20, T = 16, B = Math.round(52 * s);
+function box(size: ChartSize | undefined, s: number, minPW = 0, extraB = 0): Box {
+  const L = Math.round(64 * s), R = 20, T = 16, B = Math.round(52 * s + extraB);
   const W = Math.max(240, size?.w ?? 640, L + R + minPW), H = Math.max(200, size?.h ?? 360);
   return { W, H, L, T, B, PW: W - L - R, PH: H - T - B, s, sized: !!size, reqW: size?.w };
 }
+/** Category labels: about 3 lines at most, each about this many px per character at 14px. */
+const CAT_LINES = 3;
+const CAT_CHAR_W = 8.4;
+const CAT_LINE_H = 16;
+const CAT_PAD = 4;
+
+/**
+ * Wrap a bar category label into lines of at most `maxChars` characters. Breaks at spaces and
+ * after `-`, `_`, `/`, `.`; a piece with no break point is hard-broken by characters. Past
+ * `maxLines` the last line ends with an ellipsis and `cut` is true.
+ */
+export function wrapLabel(text: string, maxChars: number, maxLines = CAT_LINES): { lines: string[]; cut: boolean } {
+  const n = Math.max(1, Math.floor(maxChars));
+  const lines: string[] = [];
+  let cur = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const pieces = word.match(/[^-_/.]*[-_/.]|[^-_/.]+/g) ?? [word];
+    pieces.forEach((piece, i) => {
+      const joined = cur + (i === 0 && cur ? ' ' : '') + piece;
+      if (joined.length <= n) { cur = joined; return; }
+      if (cur) lines.push(cur);
+      cur = piece;
+      while (cur.length > n) { lines.push(cur.slice(0, n)); cur = cur.slice(n); }
+    });
+  }
+  if (cur || !lines.length) lines.push(cur);
+  if (lines.length <= maxLines) return { lines, cut: false };
+  const kept = lines.slice(0, maxLines);
+  kept[maxLines - 1] = kept[maxLines - 1].slice(0, Math.max(0, n - 1)) + '…';
+  return { lines: kept, cut: true };
+}
+
 const scaleOf = (opts: ChartOpts) => Math.min(3, Math.max(0.5, opts.scale ?? 1));
 const traceAttr = (t: string | undefined) => (t === undefined ? '' : ` data-trace="${esc(t)}"`);
 const NONE = '(none)';
@@ -102,7 +134,6 @@ function axis(values: number[], view?: [number, number]): { lo: number; hi: numb
   return { lo, hi, ticks: t.filter((v) => v >= lo - eps && v <= hi + eps) };
 }
 
-const tipLine = (k: string, v: string | undefined) => `${k}: ${v ?? ''}`;
 const p4 = (n: number) => Number(n.toPrecision(4));
 const catOf = (v: string | undefined) => (v === undefined ? NONE : canonical(v));
 
@@ -110,13 +141,13 @@ const empty = (msg: string): Chart => ({ html: `<p class="dq-empty">${esc(msg)}<
 
 /** One x position of a group: every y number found there, and the first block to jump to. */
 export interface GroupPoint { x: number; ys: number[]; mean: number; min: number; max: number; uuid: string }
-/** Points that belong together: the rows of one group-key value (`by`, else `color`), or a single row. */
+/** Points that belong together: the rows of one group-key value (`color`, else `by`), or a single row. */
 export interface ScatterGroup { key?: string; label: string; first: Row; pts: GroupPoint[] }
 
 const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
 
 /**
- * Groups rows for the scatter plot. With a group key (`by`, else `color`), rows sharing its value
+ * Groups rows for the scatter plot. With a group key (`color`, else `by`), rows sharing its value
  * form one group; without, each row is its own group. Inside a group the y numbers are pooled per distinct x (a row sits at
  * the mean of its x cell; every number of its y cell counts), and points come sorted by x.
  */
@@ -145,11 +176,10 @@ export function scatterGroups(rows: Row[], plot: { x: string; y: string }, group
 export function scatterSvg(rows: Row[], plot: ScatterSpec, types: Record<string, ValueType>, by?: string, opts: ChartOpts = {}): Chart {
   const b = box(opts.size, scaleOf(opts));
   const { L, T, PW, PH, H, B, s } = b;
-  // Rows group by `by`, else by `color`: a colour then pools like a `by` group (mean + min–max).
-  const groups = scatterGroups(rows, plot, by ?? plot.color);
-  if (!groups.length) return empty(`No rows have numeric ${plot.x} and ${plot.y}.`);
-  // Colour groups are the traces: `color:` when given (a group takes its first row's value), else `by:`.
+  // Rows group by `color`, else by `by`: a group pools its y per x (mean + min–max) and is one trace.
   const ckey = plot.color ?? by;
+  const groups = scatterGroups(rows, plot, ckey);
+  if (!groups.length) return empty(`No rows have numeric ${plot.x} and ${plot.y}.`);
   const traceOf = (g: ScatterGroup) => (ckey ? `${ckey} = ${catOf(g.first.values[ckey])}` : undefined);
   const hidden = new Set(opts.hidden ?? []);
   const shown = groups.filter((g) => !hidden.has(traceOf(g) ?? ''));
@@ -240,8 +270,6 @@ export function scatterSvg(rows: Row[], plot: ScatterSpec, types: Record<string,
       if (!inside(p.x, p.mean)) continue;
       const n = p.ys.length;
       const tip = [gr.label, `${plot.x}: ${p4(p.x)}`, n >= 2 ? `${plot.y}: mean ${p4(p.mean)} · min ${p4(p.min)} · max ${p4(p.max)} · n=${n}` : `${plot.y}: ${p4(p.mean)}`];
-      // A colour group is titled by its colour value already.
-      if (plot.color && by) tip.push(tipLine(plot.color, gr.first.values[plot.color]));
       // A pixel-sized chart gets hover boxes from the host script; the scaled one falls back to <title>.
       const title = b.sized ? '' : `<title>${esc(tip.join('\n'))}</title>`;
       dots += `<circle class="dq-pt" cx="${f1(X(p.x))}" cy="${f1(Y(p.mean))}" r="${f1(3 * s).replace(/\.0$/, '')}" fill="${fill}"${traceAttr(traceOf(gr))} data-uuid="${esc(p.uuid)}"${key} data-tip="${esc(tip.join('\n'))}">${title}</circle>`;
@@ -335,7 +363,13 @@ export function barSvg(rows: Row[], plot: BarSpec, types: Record<string, ValueTy
   // Each category keeps a minimum width, more with each y series drawn side by side; past that
   // the chart grows wider than its box and scrolls.
   const catW = MIN_CAT_W + Math.max(0, shownYs.length - 1) * MIN_SERIES_W;
-  const b = box(opts.size, sc, opts.size ? groups.length * catW * sc : 0);
+  const minPW = opts.size ? groups.length * catW * sc : 0;
+  // Labels wrap at the category's width (approximate glyph width × Ctrl + wheel scale); the
+  // bottom margin grows by the extra lines the longest label needs.
+  const slotW = box(opts.size, sc, minPW).PW / Math.max(1, groups.length);
+  const wraps = groups.map((gr) => wrapLabel(gr.cat, (slotW - 2 * CAT_PAD * sc) / (CAT_CHAR_W * sc)));
+  const extra = (Math.max(1, ...wraps.map((w) => w.lines.length)) - 1) * CAT_LINE_H * sc;
+  const b = box(opts.size, sc, minPW, extra);
   const { L, T, PW, PH, s } = b;
   const all = groups.flatMap((gr) => gr.stats.filter((s): s is NonNullable<typeof s> => s !== null));
   if (!all.length) return empty(`No rows have numeric ${plot.ys.join(', ')}.`);
@@ -372,7 +406,11 @@ export function barSvg(rows: Row[], plot: BarSpec, types: Record<string, ValueTy
         g += `<g class="dq-whisker"><line x1="${m}" y1="${f1(Y(st.max))}" x2="${m}" y2="${f1(Y(st.min))}"/><line x1="${a}" y1="${f1(Y(st.max))}" x2="${z}" y2="${f1(Y(st.max))}"/><line x1="${a}" y1="${f1(Y(st.min))}" x2="${z}" y2="${f1(Y(st.min))}"/></g>`;
       }
     });
-    g += `<text class="dq-cat" x="${f1(cx)}" y="${f1(T + PH + 18 * s)}" text-anchor="middle">${esc(gr.cat)}</text><text class="dq-tick" x="${f1(cx)}" y="${f1(T + PH + 34 * s)}" text-anchor="middle">n=${gr.n}</text>`;
+    const w = wraps[i];
+    const tspans = w.lines.map((l, k) => `<tspan x="${f1(cx)}" dy="${k ? f1(CAT_LINE_H * s) : '0'}">${esc(l)}</tspan>`).join('');
+    const full = w.cut ? `<title>${esc(gr.cat)}</title>` : '';
+    const nY = T + PH + 34 * s + (w.lines.length - 1) * CAT_LINE_H * s;
+    g += `<text class="dq-cat" x="${f1(cx)}" y="${f1(T + PH + 18 * s)}" text-anchor="middle">${full}${tspans}</text><text class="dq-tick" x="${f1(cx)}" y="${f1(nY)}" text-anchor="middle">n=${gr.n}</text>`;
   });
   g = `<rect class="dq-area" x="${L}" y="${T}" width="${PW}" height="${PH}"/>` + g;
   g += `<line class="dq-zero" x1="${L}" y1="${f1(Y(0))}" x2="${L + PW}" y2="${f1(Y(0))}"/>`;

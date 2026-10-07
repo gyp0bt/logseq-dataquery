@@ -60,3 +60,26 @@ describe('bar Y chips and + Y', () => {
     await expect(applyControl(api, { dataset: { macro: 'm', name: 'y', op: 'swap', col: 'gre' } })).rejects.toThrow("unexpected control 'y:swap'");
   });
 });
+
+describe('scatter Color select and the by key', () => {
+  function scatter(dsl: string) {
+    const api = fakeLogseq({ P: [{ uuid: 'm', content: `{{renderer :DQscatter, ${dsl}}}` }] });
+    const parsed = parseQuery(dsl);
+    if (!parsed.ok) throw new Error('bad test query');
+    const result = runQuery(parsed.query, 'scatter', { blocks, types, macroUuid: 'm' });
+    document.body.innerHTML = renderInline({ kind: 'scatter', macroUuid: 'm', dsl, parsed, result });
+    return api;
+  }
+  const colorSel = () => document.querySelector<HTMLSelectElement>('.dq-side select[data-name="color"]')!;
+
+  it('lists the by key; the blank choice says the chart groups by it; choosing it writes color:', async () => {
+    const api = scatter('by:run x:gre y:thick');
+    const opts = [...colorSel().options].map((o) => [o.value, o.textContent]);
+    expect(opts).toContainEqual(['run', 'run']);
+    expect(opts[0]).toEqual(['', 'by: run']);
+    expect(colorSel().value).toBe('');
+    colorSel().value = 'run';
+    await applyControl(api, { value: colorSel().value, dataset: dataset(colorSel()) });
+    expect((await readMacro(api, 'm')).dsl).toBe('by:run x:gre y:thick color:run');
+  });
+});

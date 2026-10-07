@@ -56,9 +56,9 @@ export function tableHtml(result: QueryResult, q: Query, uuid: string): string {
           return `<td class="${cls}"${alt}>${esc(v ?? '')}${r.conflicts[k] ? '<sup>⚠</sup>' : ''}</td>`;
         })
         .join('');
-      // A chart point finds its rows by the value of its group key: `by` (one merged row), else
-      // `color` (every row of that colour).
-      const gk = q.by ?? q.color;
+      // A chart point finds its rows by the value of its group key: `color` (every row of that
+      // colour), else `by` (one merged row).
+      const gk = q.color ?? q.by;
       const key = gk && r.values[gk] !== undefined ? ` data-key="${esc(canonical(r.values[gk]))}"` : '';
       return `<tr data-uuid="${esc(r.sources[0].uuid)}"${key}><td class="dq-link" data-on-click="dqJump" data-uuid="${esc(r.sources[0].uuid)}">${esc(rowLabel(r, q.by))}</td>${cells}</tr>`;
     })
@@ -146,7 +146,8 @@ function sideHtml(inp: InlineInput, q: Query, res: QueryResult): string {
   if (inp.kind === 'scatter') {
     html += select(uuid, 'x', 'X', numeric, res.axes.x);
     html += select(uuid, 'y', 'Y', numeric, res.axes.ys[0]);
-    html += select(uuid, 'color', 'Color', cols, res.axes.color, 'none');
+    // Without `color:` the points group and colour by `by:`; the blank choice says so.
+    html += select(uuid, 'color', 'Color', cols, res.axes.color, q.by ? `by: ${q.by}` : 'none');
     html += errToggle(uuid, 'bar', q.err === 'bar', '±', 'Min–max error bars');
     html += errToggle(uuid, 'band', q.err === 'band', '▤', 'Min–max band');
     html += button('reset', '⟲', 'Reset axes (or double-click the plot)') + button('expand', '⤢', 'Enlarge') + csv;

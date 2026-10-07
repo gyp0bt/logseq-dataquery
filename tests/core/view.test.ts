@@ -53,6 +53,9 @@ describe('renderInline', () => {
     // Without by:, color: keys the rows so a point of a colour group can mark all of them.
     const byColor = view('table', 'color:seed', result([row('a', { seed: '0' }), row('b', { seed: '0' })], ['seed']));
     expect(byColor.match(/<tr data-uuid="[ab]" data-key="0">/g)).toHaveLength(2);
+    // With both, color: keys the rows too, as it is the scatter's group key.
+    const both = view('scatter', 'by:run color:seed', result([row('a', { run: 'r1', seed: '0' }), row('b', { run: 'r2', seed: '0' })], ['seed']));
+    expect(both.match(/<tr data-uuid="[ab]" data-key="0">/g)).toHaveLength(2);
     expect(html).toContain('2 rows');
     expect(html).toContain('⚠ 1');
     expect(html).toContain('data-on-click="dqJump" data-uuid="b"');
@@ -135,6 +138,14 @@ describe('renderInline', () => {
     expect(html.match(/class="dq-whisker"/g)).toHaveLength(1);
     // Choosable before it is chosen, too.
     expect(draw('by:run y:gre')).toMatch(/data-name="x"[^>]*>.*<option value="run">run<\/option>/);
+  });
+
+  it('the scatter Color select offers the by key, whatever its type', () => {
+    const html = real('scatter', 'by:run x:thick y:gre');
+    const sel = /data-name="color"[^>]*>(.*?)<\/select>/.exec(html)![1];
+    expect(sel).toContain('<option value="run">run</option>');
+    expect(sel).toContain('<option value="" selected>by: run</option>');
+    expect(/data-name="color"[^>]*>(.*?)<\/select>/.exec(real('scatter', 'x:thick y:gre'))![1]).toContain('<option value="" selected>none</option>');
   });
 
   it('folds the table under a scatter or bar chart behind a toggle; the host can paint it open', () => {
