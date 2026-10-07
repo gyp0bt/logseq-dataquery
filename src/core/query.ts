@@ -1,5 +1,5 @@
 import type { Cond, Kind, Query } from './dsl';
-import { blockToRow, comparePriority, mergeRows, type Row, type SourceBlock } from './rows';
+import { blockToRow, canonical, comparePriority, mergeRows, type Row, type SourceBlock } from './rows';
 import { parseContent } from './text';
 import {
   cellMean, compareValues, inferType, isNumericType, resolveType, valuesEqual, type TypeOverrides, type ValueType,
@@ -16,6 +16,11 @@ export interface QueryContext {
 export interface Axes { x?: string; ys: string[]; color?: string }
 export interface QueryResult {
   rows: Row[];
+  /**
+   * Rows a chart groups: with `by:KEY`, the unmerged blocks that carry KEY (the chart groups them by
+   * their KEY value); otherwise the same rows as the table.
+   */
+  chartRows?: Row[];
   cols: string[];
   types: Record<string, ValueType>;
   axes: Axes;
@@ -116,9 +121,24 @@ export function runQuery(q: Query, kind: Kind, ctx: QueryContext): QueryResult {
   let all = inOutlineOrder(tagged, ctx.order)
     .map(blockToRow)
     .filter((r): r is Row => r !== null);
+  const pass = (r: Row) => q.conds.every((c) => matchCond(r, c, ctx.types));
+  let chartRows: Row[] | undefined;
   // `by:KEY`: rows are the blocks that carry KEY, one row per KEY value.
-  if (q.by) all = mergeRows(all.filter((r) => q.by! in r.values), q.by);
-  let rows = all.filter((r) => q.conds.every((c) => matchCond(r, c, ctx.types)));
+  if (q.by) {
+    const by = q.by;
+    const carriers = all.filter((r) => by in r.values);
+    all = mergeRows(carriers, by);
+    // The chart keeps the blocks apart and groups them itself. A block lacking a key a condition
+    // asks about takes it from its merged row, but only when the blocks of that row agree on it.
+    const mergedOf = new Map(all.map((m) => [canonical(m.values[by]), m]));
+    chartRows = carriers.filter((r) => {
+      const m = mergedOf.get(canonical(r.values[by]));
+      const values = { ...r.values };
+      if (m) for (const [k, v] of Object.entries(m.values)) if (!(k in values) && !m.conflicts[k]) values[k] = v;
+      return pass({ ...r, values });
+    });
+  }
+  let rows = all.filter(pass);
   if (q.sort) rows = sortRows(rows, q.sort, ctx.types);
   const present = keysInOrder(all);
   const cols = present.filter((k) => k !== q.by);
@@ -126,5 +146,5 @@ export function runQuery(q: Query, kind: Kind, ctx: QueryContext): QueryResult {
   if (!all.length)
     warnings.push(q.refs.length ? `No blocks with properties are tagged ${q.refs.map((r) => '#' + r).join(' ')}.` : 'No blocks with properties.');
   else for (const k of referencedKeys(q)) if (!present.includes(k)) warnings.push(`No block has '${k}'.`);
-  return { rows, cols, types: ctx.types, axes: defaultAxes(q, kind, cols, ctx.types), warnings };
+  return { rows, chartRows: chartRows ?? rows, cols, types: ctx.types, axes: defaultAxes(q, kind, cols, ctx.types), warnings };
 }

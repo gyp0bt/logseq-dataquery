@@ -11,6 +11,8 @@ export interface InlineHooks {
   readDsl?(uuid: string): Promise<string>;
   /** Size and transient state (zoom, scale, hidden traces) to draw a chart at on first paint. */
   chartOpts?(uuid: string): ChartOpts | undefined;
+  /** Whether the user expanded the table under the chart of `uuid` (transient, kept by the host). */
+  tableOpen?(uuid: string): boolean;
   /** Whether the slot still shows our last paint; an emptied slot is painted again even if unchanged. */
   painted?(slot: string): boolean;
 }
@@ -72,7 +74,8 @@ export class InlineViews {
     if (info.last === key && (this.hooks.painted?.(slot) ?? true)) return;
     info.last = key;
     const opts = this.hooks.chartOpts?.(uuid);
-    this.provide(slot, opts ? renderInline({ ...input, chartOpts: opts }) : key);
+    const open = this.hooks.tableOpen?.(uuid) ?? false;
+    this.provide(slot, opts || open ? renderInline({ ...input, chartOpts: opts, tableOpen: open }) : key);
   }
 
   /** What the view of `uuid` last showed: rows, columns, axes and the query. */

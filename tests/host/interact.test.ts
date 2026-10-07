@@ -183,6 +183,91 @@ describe('plotly-like interactions', () => {
     expect(entry().classList.contains('dq-off')).toBe(false);
   });
 
+  it('hovering a marker shows a fixed label in the document body, with the block name and values', () => {
+    ui.attach('slot');
+    const pt = document.querySelector<SVGElement>('circle[data-uuid="b"]')!;
+    fire(pt, 'mouseover');
+    const tip = document.querySelector<HTMLElement>('body > .dq-tip')!;
+    expect(tip.hidden).toBe(false);
+    expect(tip.textContent).toContain('B');
+    expect(tip.textContent).toContain('y: mean 21 · min 20 · max 22 · n=2');
+    expect(tip.closest('.dq')).toBeNull();
+    fire(pt, 'mouseout');
+    expect(tip.hidden).toBe(true);
+  });
+
+  it('the hover label still appears when Logseq stops the event on its way up', () => {
+    ui.attach('slot');
+    const pt = document.querySelector<SVGElement>('circle[data-uuid="a"]')!;
+    const stop = (e: Event) => e.stopPropagation();
+    document.body.addEventListener('mouseover', stop);
+    fire(pt, 'mouseover');
+    document.body.removeEventListener('mouseover', stop);
+    expect(document.querySelector<HTMLElement>('body > .dq-tip')!.hidden).toBe(false);
+  });
+
+  it('Ctrl + wheel leaves the legend at its normal size', () => {
+    setup('scatter', 'x:x y:y color:x');
+    ui.attach('slot');
+    document.querySelector('circle.dq-pt')!.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true, deltaY: -100 }));
+    expect(svg().getAttribute('style')).toContain('--dq-s:');
+    expect(document.querySelector('.dq-legend')!.getAttribute('style')).toBeNull();
+  });
+
+  it('double-clicking an axis end opens a box with that end; Enter applies a typed value', () => {
+    ui.attach('slot');
+    const before = dom();
+    fire(svg().querySelector('.dq-axdrag[data-ax="x"][data-end="1"]')!, 'dblclick');
+    const input = () => document.querySelector<HTMLInputElement>('input.dq-axin');
+    expect(input()).not.toBeNull();
+    expect(Number(input()!.value)).toBe(before[1]);
+    expect(document.activeElement).toBe(input());
+    // The plot-area reset and the trace toggle did not run: the range is unchanged.
+    expect(dom()).toEqual(before);
+    input()!.value = '7.5';
+    const e = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    input()!.dispatchEvent(e);
+    expect(input()).toBeNull();
+    expect(dom()[1]).toBe(7.5);
+    expect(dom()[0]).toBe(before[0]);
+  });
+
+  it('a bad or inverted value and Esc change nothing; double-clicking the middle resets that axis only', () => {
+    ui.attach('slot');
+    const before = dom();
+    const type = (end: string, v: string, k = 'Enter') => {
+      fire(svg().querySelector(`.dq-axdrag[data-ax="y"][data-end="${end}"]`)!, 'dblclick');
+      const input = document.querySelector<HTMLInputElement>('input.dq-axin')!;
+      input.value = v;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    };
+    type('0', 'abc');
+    type('0', String(before[3] + 1));
+    type('0', '5', 'Escape');
+    expect(dom()).toEqual(before);
+    expect(document.querySelector('input.dq-axin')).toBeNull();
+    type('0', '15');
+    fire(svg().querySelector('.dq-axdrag[data-ax="x"][data-end="0"]')!, 'dblclick');
+    const xi = document.querySelector<HTMLInputElement>('input.dq-axin')!;
+    xi.value = '1.5';
+    xi.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    expect(dom()[2]).toBe(15);
+    expect(dom()[0]).toBe(1.5);
+    fire(svg().querySelector('.dq-axdrag[data-ax="y"][data-end="pan"]')!, 'dblclick');
+    expect(dom()[2]).toBe(before[2]);
+    expect(dom()[0]).toBe(1.5);
+  });
+
+  it('keys typed in the axis box do not reach Logseq', () => {
+    ui.attach('slot');
+    fire(svg().querySelector('.dq-axdrag[data-ax="x"][data-end="0"]')!, 'dblclick');
+    const heard = vi.fn();
+    document.body.addEventListener('keydown', heard);
+    document.querySelector<HTMLInputElement>('input.dq-axin')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    document.body.removeEventListener('keydown', heard);
+    expect(heard).not.toHaveBeenCalled();
+  });
+
   it('by: colours the points by its value', () => {
     setup('scatter', 'x:x y:y by:x');
     ui.attach('slot');
@@ -202,6 +287,47 @@ describe('plotly-like interactions', () => {
     expect(svg()).toBe(first);
   });
 
+});
+
+describe('folded table under a chart', () => {
+  const fold = () => document.querySelector<HTMLElement>('.dq-fold')!;
+  const toggle = () => fold().querySelector<HTMLElement>('[data-act="table"]')!;
+
+  it('starts folded; the toggle opens and closes it and the choice survives a re-render', () => {
+    ui.attach('slot');
+    expect(fold().classList.contains('dq-open')).toBe(false);
+    expect(toggle().textContent).toBe('▸ Table (3 rows)');
+    toggle().click();
+    expect(fold().classList.contains('dq-open')).toBe(true);
+    expect(toggle().textContent).toBe('▾ Table (3 rows)');
+    expect(ui.tableOpen('m')).toBe(true);
+    setup('scatter');
+    ui.attach('slot');
+    expect(fold().classList.contains('dq-open')).toBe(true);
+    toggle().click();
+    expect(ui.tableOpen('m')).toBe(false);
+  });
+
+  it('clicking a point opens the table, then marks the row', () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    ui.attach('slot');
+    document.querySelector<SVGElement>('circle[data-uuid="c"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(fold().classList.contains('dq-open')).toBe(true);
+    expect(document.querySelector('tr[data-uuid="c"]')!.classList.contains('dq-hl')).toBe(true);
+  });
+
+  it('with by:, a point marks the merged row of its by value', () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    setup('scatter', 'x:x y:y by:x');
+    ui.attach('slot');
+    document.querySelector<SVGElement>('circle[data-key="2"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.querySelector('tr[data-key="2"]')!.classList.contains('dq-hl')).toBe(true);
+  });
+
+  it('a table view has no fold', () => {
+    setup('table');
+    expect(document.querySelector('.dq-fold')).toBeNull();
+  });
 });
 
 describe('CSV', () => {

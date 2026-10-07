@@ -120,3 +120,27 @@ describe('cols and warnings', () => {
     expect(run('#nothing').warnings).toEqual(['No blocks with properties are tagged #nothing.']);
   });
 });
+
+describe('chartRows', () => {
+  const runs = [
+    b('h', 'R1 header\nrun:: r1\nmodel:: A'),
+    b('s0', 'seed 0\nrun:: r1\nseed:: 0\nlr:: 1\ngre:: 1.2'),
+    b('s1', 'seed 1\nrun:: r1\nseed:: 1\nlr:: 1\ngre:: 1.4'),
+    b('t0', 'seed 0\nrun:: r2\nseed:: 0\nlr:: 2\ngre:: 0.9'),
+    b('n', 'no run\nlr:: 3\ngre:: 1'),
+  ];
+  const c2: QueryContext = { blocks: runs, types: computeTypes(runs, emptyOverrides()), macroUuid: 'm' };
+  it('without by: the same rows as the table', () => {
+    const r = run('#work/nsb', 'scatter', c2);
+    expect(r.chartRows!.map((x) => x.id)).toEqual(r.rows.map((x) => x.id));
+  });
+  it('with by: the unmerged blocks that carry KEY, while the table keeps one row per value', () => {
+    const r = run('#work/nsb by:run', 'scatter', c2);
+    expect(r.rows).toHaveLength(2);
+    expect(r.chartRows!.map((x) => x.id)).toEqual(['h', 's0', 's1', 't0']);
+  });
+  it('conditions apply to each block, falling back to its merged row for keys the block lacks', () => {
+    expect(run('#work/nsb by:run seed==0', 'scatter', c2).chartRows!.map((x) => x.id)).toEqual(['s0', 't0']);
+    expect(run('#work/nsb by:run model==A', 'scatter', c2).chartRows!.map((x) => x.id)).toEqual(['h', 's0', 's1']);
+  });
+});

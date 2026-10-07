@@ -81,6 +81,7 @@ async function main(): Promise<void> {
   const views: InlineViews = new InlineViews(engine, provide, (slot) => slotEl(slot) !== null, {
     readDsl: async (uuid) => (await readMacro(api, uuid)).dsl,
     chartOpts: (uuid) => interact?.optsFor(uuid),
+    tableOpen: (uuid) => interact?.tableOpen(uuid) ?? false,
     painted: (slot) => {
       const el = slotEl(slot);
       return el === undefined || !!el?.querySelector('.dq');

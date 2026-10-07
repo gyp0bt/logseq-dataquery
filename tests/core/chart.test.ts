@@ -119,30 +119,18 @@ describe('several values in one row', () => {
     const html = draw('off');
     expect(html.match(/<circle /g)).toHaveLength(4);
     expect(html).toContain('y: mean 1.29 · min 1.27 · max 1.31 · n=3');
-    expect(html).toContain('x: mean 3 · min 2 · max 4 · n=2');
+    // Several x numbers give only the x position (their mean), never an x range.
+    expect(html).toContain('x: 3\ny: 2');
     expect(html).toContain('y: 1.3');
   });
-  it('err:bar draws a vertical bar for several y and a horizontal one for several x, none for single values (Review Focus 5)', () => {
+  it('err:bar draws vertical bars for rows with several y and never a horizontal bar', () => {
     const html = draw('bar');
-    // p and t have several y, r has several x; q is a plain point.
-    expect(html.match(/class="dq-err"/g)).toHaveLength(3);
+    // p and t have several y; r has several x (no bar); q is a plain point.
+    expect(html.match(/class="dq-err"/g)).toHaveLength(2);
+    for (const m of html.matchAll(/<g class="dq-err"[^>]*><line x1="([^"]+)" y1="[^"]+" x2="([^"]+)"/g)) expect(m[1]).toBe(m[2]);
     expect(html).toContain('class="dq-clip"');
     const single = scatterSvg([row('q', { x: '1', y: '1.3' }), row('w', { x: '2', y: '1.5' })], { x: 'x', y: 'y', labels: false, err: 'bar' }, mt).html;
     expect(single).not.toContain('dq-err');
-  });
-  it('err:band draws, per colour, a band through upper then lower bounds and a line through means in x order', () => {
-    const html = draw('band', 's');
-    const bands = [...html.matchAll(/<path class="dq-band" d="([^"]+)" fill="([^"]+)" fill-opacity="0.2"[^>]*\/>/g)];
-    expect(bands).toHaveLength(2);
-    const a = nums(bands[0][1]);
-    const xs = a.filter((_, i) => i % 2 === 0);
-    expect(xs).toHaveLength(6);
-    expect(xs.slice(0, 3)).toEqual([...xs.slice(0, 3)].sort((m, n) => m - n));
-    expect(xs.slice(3)).toEqual([...xs.slice(0, 3)].reverse());
-    const line = /<polyline class="dq-line" points="([^"]+)" stroke="var\(--dq-c0\)"/.exec(html)!;
-    const lx = nums(line[1]).filter((_, i) => i % 2 === 0);
-    expect(lx).toEqual([...lx].sort((m, n) => m - n));
-    expect(html).not.toContain('dq-err');
   });
   it('err:off draws points only', () => {
     const html = draw('off');
@@ -203,7 +191,8 @@ describe('font and marker scale', () => {
     expect(two.html).toContain('r="6"');
     expect(two.html).toContain('style="--dq-s:2"');
     expect(two.html).toMatch(/data-box="128,/);
-    expect(legendHtml(two.legend, 2)).toContain('--dq-s:2');
+    // The legend keeps its size.
+    expect(legendHtml(two.legend)).not.toContain('--dq-s');
   });
 });
 
@@ -242,5 +231,63 @@ describe('bar with many categories', () => {
     expect(h).toContain('data-w="600"');
     const few = barSvg(many.slice(0, 3), { x: 'c', ys: ['v'] }, { c: 'string', v: 'number' }, { size: { w: 600, h: 360 } }).html;
     expect(few).toContain('width="600"');
+  });
+});
+
+describe('scatter groups by by:', () => {
+  const gt = { run: 'string', x: 'number', y: 'numlist', seed: 'category' } as const;
+  const one = [row('a', { run: 'r1', x: '2', y: '1.27/1.31', seed: '0' }), row('b', { run: 'r1', x: '2', y: '1.4', seed: '1' })];
+  const many = [
+    row('c', { run: 'r2', x: '3', y: '2' }), row('d', { run: 'r2', x: '1', y: '1/3' }),
+    row('e', { run: 'r2', x: '3', y: '4' }), row('f', { run: 'r2', x: '2', y: '5' }),
+  ];
+  const draw = (rs: Row[], err: 'bar' | 'band' | 'off', color?: string) =>
+    scatterSvg(rs, { x: 'x', y: 'y', color, labels: false, err }, gt, 'run', { size: { w: 800, h: 360 } });
+  const yOf = (html: string) => {
+    const dom = /data-dom="([^"]+)" data-box="([^"]+)"/.exec(html)!;
+    const [, , y0, y1] = dom[1].split(',').map(Number);
+    const [, T, , PH] = dom[2].split(',').map(Number);
+    return (py: number) => y0 + ((T + PH - py) / PH) * (y1 - y0);
+  };
+
+  it('one x in a group: one marker at the mean of every y and one vertical bar from min to max', () => {
+    const c = draw(one, 'bar');
+    expect(c.html.match(/<circle /g)).toHaveLength(1);
+    expect(c.html).toContain('data-tip="r1\nx: 2\ny: mean 1.327 · min 1.27 · max 1.4 · n=3"');
+    const bars = [...c.html.matchAll(/<g class="dq-err"[^>]*><line x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"/g)];
+    expect(bars).toHaveLength(1);
+    const Y = yOf(c.html);
+    expect(Y(Number(bars[0][2]))).toBeCloseTo(1.4, 1);
+    expect(Y(Number(bars[0][4]))).toBeCloseTo(1.27, 1);
+    expect(c.html).not.toContain('dq-line');
+  });
+  it('several x in a group: a line through the per-x means in x order, a marker and a bar at each x', () => {
+    const c = draw(many, 'bar');
+    expect(c.html.match(/<circle /g)).toHaveLength(3);
+    const line = /<polyline class="dq-line" points="([^"]+)"/.exec(c.html)!;
+    const pts = line[1].split(' ').map((p) => p.split(',').map(Number));
+    expect(pts.map((p) => p[0])).toEqual([...pts.map((p) => p[0])].sort((m, n) => m - n));
+    const Y = yOf(c.html);
+    expect(pts.map((p) => Number(Y(p[1]).toFixed(1)))).toEqual([2, 5, 3]);
+    // x = 1 (1/3) and x = 3 (2 and 4) have a spread; x = 2 has one value.
+    expect(c.html.match(/class="dq-err"/g)).toHaveLength(2);
+  });
+  it('err:band fills only groups with several x; a single-x group keeps its bar', () => {
+    const c = draw([...one, ...many], 'band');
+    expect(c.html.match(/class="dq-band"/g)).toHaveLength(1);
+    expect(c.html).toMatch(/<path class="dq-band"[^>]*data-trace="run = r2"/);
+    expect(c.html.match(/class="dq-err"/g)).toHaveLength(1);
+    expect(c.html).toMatch(/<g class="dq-err" data-trace="run = r1"/);
+  });
+  it('err:off keeps the line of a multi-x group but draws no bar or band', () => {
+    const c = draw([...one, ...many], 'off');
+    expect(c.html).toContain('class="dq-line"');
+    expect(c.html).not.toContain('dq-err');
+    expect(c.html).not.toContain('dq-band');
+  });
+  it('an explicit color: colours each group by the value of its first row', () => {
+    const c = draw([...one, ...many], 'bar', 'seed');
+    expect(c.legend.filter((l) => l.trace).map((l) => l.label)).toEqual(['seed = 0', 'seed = (none)']);
+    expect(c.html).toMatch(/<circle[^>]*data-trace="seed = 0"[^>]*data-key="r1"/);
   });
 });

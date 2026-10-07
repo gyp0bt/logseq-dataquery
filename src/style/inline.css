@@ -45,8 +45,9 @@
 .dq-chart .dq-zero { stroke: var(--dq-plot-grid); stroke-width: calc(2px * var(--dq-s, 1)); pointer-events: none; }
 .dq-chart .dq-ref { stroke: var(--dq-c1); stroke-width: calc(1.5px * var(--dq-s, 1)); stroke-dasharray: 6 4; pointer-events: none; }
 .dq-chart .dq-passzone { fill: var(--dq-c2); fill-opacity: 0.12; pointer-events: none; }
-.dq-chart .dq-pt { cursor: pointer; }
+.dq-chart .dq-pt { cursor: pointer; pointer-events: all; }
 .dq-chart .dq-pt:hover { r: calc(5px * var(--dq-s, 1)); stroke: var(--dq-plot-fg); stroke-width: calc(1px * var(--dq-s, 1)); }
+.dq-chart .dq-bar { pointer-events: all; }
 .dq-chart .dq-bar:hover { filter: brightness(1.1); }
 .dq-chart .dq-whisker { pointer-events: none; }
 .dq-chart .dq-whisker line { stroke: var(--dq-plot-fg); stroke-width: calc(1.3px * var(--dq-s, 1)); }
@@ -61,9 +62,11 @@
 .dq-chart .dq-axdrag[data-ax="y"] { cursor: ns-resize; }
 .dq-chart .dq-axdrag[data-end="pan"] { cursor: move; }
 .dq-chart .dq-drag { fill: var(--dq-plot-fg); fill-opacity: 0.1; stroke: var(--dq-plot-fg); stroke-dasharray: 3 3; pointer-events: none; }
-.dq-tip { position: absolute; z-index: 2; pointer-events: none; white-space: pre; font: 13px/1.4 Arial, sans-serif; color: #fff; background: var(--dq-c0); border: 1px solid #fff; border-radius: 2px; padding: 3px 6px; }
+/* The hover label lives in Logseq's <body>, fixed to the viewport: inside .dq it would be clipped
+   (overflow) and, with container-type, even a fixed box would be positioned against .dq. */
+.dq-tip { position: fixed; z-index: 9999; pointer-events: none; white-space: pre; font: 13px/1.4 Arial, sans-serif; color: #fff; background: var(--dq-c0); border: 1px solid #fff; border-radius: 2px; padding: 3px 6px; }
 .dq-tip[hidden] { display: none; }
-.dq-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: calc(0.875em * var(--dq-s, 1)); color: var(--dq-muted); padding: 2px 0 6px; }
+.dq-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: 0.875em; color: var(--dq-muted); padding: 2px 0 6px; }
 .dq-legend .dq-trace { cursor: pointer; user-select: none; }
 .dq-legend .dq-off { opacity: 0.4; }
 .dq-mark { display: inline-block; width: 9px; height: 9px; margin-right: 5px; vertical-align: -1px; }
@@ -71,6 +74,12 @@
 .dq-square { border-radius: 2px; }
 .dq-dash { width: 16px; height: 0; border-top: 2px dashed; vertical-align: 3px; }
 .dq-tbl { overflow: auto; max-height: 32em; }
+/* Under a chart the table folds behind a one-line toggle. */
+.dq-fold:not(.dq-open) > .dq-tbl { display: none; }
+.dq-foldtg { display: block; width: 100%; text-align: left; font: inherit; font-size: 0.875em; color: var(--dq-muted); background: transparent; border: 0; border-bottom: 1px solid var(--dq-line); padding: 3px 10px; cursor: pointer; }
+.dq-foldtg:hover { color: var(--dq-accent); }
+/* Typed range for an axis end (double-click the end of an axis). */
+.dq-axin { position: absolute; z-index: 3; width: 70px; box-sizing: border-box; font: 12px/1.4 "Open Sans", verdana, arial, sans-serif; color: var(--dq-fg); background: var(--dq-bg); border: 1px solid var(--dq-accent); border-radius: 3px; padding: 1px 4px; }
 .dq table { border-collapse: collapse; width: 100%; font-size: 1em; font-variant-numeric: tabular-nums; margin: 0; }
 .dq th, .dq td { padding: 0.35em 0.75em; border-bottom: 1px solid var(--dq-line); white-space: nowrap; text-align: left; }
 .dq th { font-weight: 600; }

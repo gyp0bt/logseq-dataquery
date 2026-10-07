@@ -2,7 +2,7 @@ import { barSvg, legendHtml, scatterSvg, type Chart, type ChartOpts } from './ch
 import type { Kind, ParseResult, Query } from './dsl';
 import { esc } from './html';
 import { isAxisNumeric, typeOf, type QueryResult } from './query';
-import { rowLabel, type Row } from './rows';
+import { canonical, rowLabel, type Row } from './rows';
 import { cellMean, isNumericType, type ValueType } from './types';
 
 export interface InlineInput {
@@ -14,6 +14,8 @@ export interface InlineInput {
   error?: string;
   /** Size and transient state to draw the chart at on first paint, so the host need not redraw it. */
   chartOpts?: ChartOpts;
+  /** Whether the table under a chart starts expanded (it is collapsed by default). */
+  tableOpen?: boolean;
 }
 
 /** Everything a view needs to draw its chart again or copy its table. */
@@ -54,7 +56,9 @@ export function tableHtml(result: QueryResult, q: Query, uuid: string): string {
           return `<td class="${cls}"${alt}>${esc(v ?? '')}${r.conflicts[k] ? '<sup>⚠</sup>' : ''}</td>`;
         })
         .join('');
-      return `<tr data-uuid="${esc(r.sources[0].uuid)}"><td class="dq-link" data-on-click="dqJump" data-uuid="${esc(r.sources[0].uuid)}">${esc(rowLabel(r, q.by))}</td>${cells}</tr>`;
+      // With `by:`, a chart point finds its merged row by the `by` value.
+      const key = q.by && r.values[q.by] !== undefined ? ` data-key="${esc(canonical(r.values[q.by]))}"` : '';
+      return `<tr data-uuid="${esc(r.sources[0].uuid)}"${key}><td class="dq-link" data-on-click="dqJump" data-uuid="${esc(r.sources[0].uuid)}">${esc(rowLabel(r, q.by))}</td>${cells}</tr>`;
     })
     .join('');
   return `<div class="dq-tbl" data-on-click="dqNoop"><table><thead><tr>${first}${head}</tr></thead><tbody>${body}</tbody></table></div>`;
@@ -75,7 +79,7 @@ export function chartOf(d: ViewData, opts: ChartOpts = {}): Chart | null {
   const { x, ys, color } = res.axes;
   if (kind === 'table' || !x || !ys.length) return null;
   return kind === 'scatter'
-    ? scatterSvg(res.rows, { x, y: ys[0], color, labels: q.labels, err: q.err }, res.types, q.by, opts)
+    ? scatterSvg(res.chartRows ?? res.rows, { x, y: ys[0], color, labels: q.labels, err: q.err }, res.types, q.by, opts)
     : barSvg(res.rows, { x, ys }, res.types, opts);
 }
 
@@ -126,6 +130,14 @@ function sideHtml(inp: InlineInput, q: Query, res: QueryResult): string {
   return `<div class="dq-side" data-on-click="dqNoop" data-macro="${esc(uuid)}">${html}</div>`;
 }
 
+/** Label of the one-line toggle over a chart's table. */
+export const tableToggleText = (open: boolean, n: number): string => `${open ? '▾' : '▸'} Table (${n} rows)`;
+
+/** Under a chart the table is folded behind a one-line toggle; the host flips it (`data-act="table"`). */
+function foldedTable(table: string, n: number, open: boolean): string {
+  return `<div class="dq-fold${open ? ' dq-open' : ''}" data-on-click="dqNoop" data-n="${n}"><button class="dq-foldtg" data-act="table" aria-expanded="${open}">${tableToggleText(open, n)}</button>${table}</div>`;
+}
+
 const CHART_HINT: Record<Kind, string> = {
   table: '',
   scatter: 'Pick X and Y on the right: no two numeric columns to plot.',
@@ -153,11 +165,12 @@ export function renderInline(inp: InlineInput): string {
   let chart = '';
   if (inp.kind !== 'table') {
     const c = chartOf({ kind: inp.kind, query: q, result: res }, inp.chartOpts);
-    const inner = c ? `<div class="dq-plot">${c.html}</div>${legendHtml(c.legend, inp.chartOpts?.scale)}` : `<p class="dq-empty">${CHART_HINT[inp.kind]}</p>`;
-    chart = `<div class="dq-chartbox" data-on-click="dqNoop" data-macro="${uuid}">${inner}<div class="dq-tip" hidden></div></div>`;
+    const inner = c ? `<div class="dq-plot">${c.html}</div>${legendHtml(c.legend)}` : `<p class="dq-empty">${CHART_HINT[inp.kind]}</p>`;
+    chart = `<div class="dq-chartbox" data-on-click="dqNoop" data-macro="${uuid}">${inner}</div>`;
   }
+  const table = inp.kind === 'table' ? tableHtml(res, q, inp.macroUuid) : foldedTable(tableHtml(res, q, inp.macroUuid), res.rows.length, !!inp.tableOpen);
   const notes = res.warnings.map((w) => `<p class="dq-note">${esc(w)}</p>`).join('');
-  return root(false, meta, `<div class="dq-body"><div class="dq-main">${chart}${tableHtml(res, q, inp.macroUuid)}${notes}</div>${sideHtml(inp, q, res)}</div>`);
+  return root(false, meta, `<div class="dq-body"><div class="dq-main">${chart}${table}${notes}</div>${sideHtml(inp, q, res)}</div>`);
 }
 
 /** Shown in place of the first design's `{{renderer :dataquery}}`. */

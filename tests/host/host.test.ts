@@ -200,9 +200,11 @@ describe('InlineViews', () => {
     const views = new InlineViews(new Engine(api, () => 'dataquery/types'), provide, () => true, {
       painted: () => painted,
       chartOpts: () => ({ size: { w: 777, h: 360 } }),
+      tableOpen: () => true,
     });
     await views.show('s1', 'm', 'scatter', 'x:gre y:gre');
     expect(provide.mock.calls[0][1]).toContain('width="777"');
+    expect(provide.mock.calls[0][1]).toContain('class="dq-fold dq-open"');
     painted = false;
     await views.refreshAll();
     expect(provide).toHaveBeenCalledTimes(2);

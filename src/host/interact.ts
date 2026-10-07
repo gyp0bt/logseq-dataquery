@@ -1,6 +1,6 @@
-import { dragAxis, legendHtml, type ChartOpts, type Domain } from '../core/chart';
+import { dragAxis, formatTick, legendHtml, type ChartOpts, type Domain } from '../core/chart';
 import { parseQuery } from '../core/dsl';
-import { chartOf, errorHtml, toCsv, type ViewData } from '../core/view';
+import { chartOf, errorHtml, tableToggleText, toCsv, type ViewData } from '../core/view';
 
 export interface InteractDeps {
   /** Write a valid query back into the macro. */
@@ -21,6 +21,8 @@ interface ChartState { view?: Domain; big: boolean; scale: number; hidden: Set<s
 
 const HEIGHT = 360;
 const MIN_DRAG = 6;
+/** Pointer travel before an axis drag starts moving, so the clicks of a double-click do not nudge the range. */
+const AXIS_SLOP = 3;
 const SCALE_STEP = 1.1;
 const clampScale = (s: number) => Math.min(3, Math.max(0.5, Math.round(s * 1000) / 1000));
 type AxisEnd = '0' | '1' | 'pan';
@@ -32,20 +34,26 @@ type AxisEnd = '0' | '1' | 'pan';
  */
 export class Interact {
   private state = new Map<string, ChartState>();
+  /** Macro blocks whose table under the chart the user expanded. */
+  private opened = new Set<string>();
+  /** The one hover label, fixed-positioned in Logseq's <body> so no overflow box can clip it. */
+  private tipEl?: HTMLElement;
   private observers = new WeakMap<Element, ResizeObserver>();
   private drag?: { box: HTMLElement; svg: SVGSVGElement; x: number; y: number; rect: SVGRectElement };
   private pan?: { el: HTMLElement; x: number };
-  private axDrag?: { box: HTMLElement; ax: 'x' | 'y'; end: AxisEnd; d: Domain; a: NonNullable<ReturnType<typeof areaOf>>; from: { x: number; y: number }; cx: number; cy: number };
+  private axDrag?: { box: HTMLElement; ax: 'x' | 'y'; end: AxisEnd; d: Domain; a: NonNullable<ReturnType<typeof areaOf>>; from: { x: number; y: number }; cx: number; cy: number; moved: boolean };
 
   constructor(private doc: Document, private deps: InteractDeps) {}
 
   install(): () => void {
     const on: Array<[string, (e: Event) => void, boolean]> = [
+      // Capture phase: Logseq's block handlers (React 17, delegated at its root) stop the
+      // propagation of mouseover and others, so a bubbling listener on the document never hears them.
       ['keydown', (e) => this.onKey(e as KeyboardEvent), true],
-      ['click', (e) => this.onClick(e as MouseEvent), false],
-      ['dblclick', (e) => this.onDblClick(e as MouseEvent), false],
-      ['mouseover', (e) => this.onOver(e as MouseEvent), false],
-      ['mouseout', (e) => this.onOut(e as MouseEvent), false],
+      ['click', (e) => this.onClick(e as MouseEvent), true],
+      ['dblclick', (e) => this.onDblClick(e as MouseEvent), true],
+      ['mouseover', (e) => this.onOver(e as MouseEvent), true],
+      ['mouseout', (e) => this.onOut(e as MouseEvent), true],
       ['pointerdown', (e) => this.onDown(e as PointerEvent), false],
       ['pointermove', (e) => this.onMove(e as PointerEvent), false],
       ['pointerup', (e) => this.onUp(e as PointerEvent), false],
@@ -70,6 +78,8 @@ export class Interact {
     return () => {
       for (const [t, f, cap] of bound) this.doc.removeEventListener(t, f, cap);
       this.doc.removeEventListener('wheel', wheel);
+      this.tipEl?.remove();
+      this.tipEl = undefined;
     };
   }
 
@@ -84,6 +94,8 @@ export class Interact {
       box.dataset.live = '1';
       const st = this.stateOf(box);
       box.classList.toggle('dq-big', st.big);
+      const fold = box.closest('.dq')?.querySelector<HTMLElement>('.dq-fold');
+      if (fold) setFold(fold, this.opened.has(box.dataset.macro!));
       // The view was painted at its last size and state already; redraw only if the width moved.
       const plotEl = box.querySelector<HTMLElement>('.dq-plot');
       const drawnW = plotEl?.querySelector('svg.dq-chart')?.getAttribute('data-w');
@@ -122,7 +134,13 @@ export class Interact {
     return st?.w ? this.optsOf(st, st.w) : undefined;
   }
 
+  /** Whether the table under the chart of `uuid` is expanded. */
+  tableOpen(uuid: string): boolean {
+    return this.opened.has(uuid);
+  }
+
   draw(box: HTMLElement): void {
+    this.hideTip();
     const data = this.deps.view(box.dataset.macro!);
     const plotEl = box.querySelector<HTMLElement>('.dq-plot');
     const w = plotEl?.clientWidth ?? 0;
@@ -137,12 +155,14 @@ export class Interact {
     plotEl.scrollLeft = left;
     // The legend shows hidden traces greyed and follows the scale, so it is redrawn too.
     box.querySelector('.dq-legend')?.remove();
-    plotEl.insertAdjacentHTML('afterend', legendHtml(chart.legend, st.scale));
+    plotEl.insertAdjacentHTML('afterend', legendHtml(chart.legend));
   }
 
   // ---- query field ----
 
   private onKey(e: KeyboardEvent): void {
+    const axIn = (e.target as Element | null)?.closest?.('input.dq-axin') as HTMLInputElement | null;
+    if (axIn) return this.onAxisKey(axIn, e);
     const input = (e.target as Element | null)?.closest?.('input.dq-dsl') as HTMLInputElement | null;
     if (!input) return;
     // Keys typed here belong to the field, not to Logseq's shortcuts.
@@ -175,18 +195,37 @@ export class Interact {
 
   private onClick(e: MouseEvent): void {
     const t = e.target as Element | null;
+    const fold = t?.closest?.('.dq-fold [data-act="table"]') as HTMLElement | null;
+    if (fold) return this.toggleTable(fold);
     const act = t?.closest?.('.dq-side [data-act]') as HTMLElement | null;
     if (act) return this.sideAction(act);
     const pt = t?.closest?.('.dq-pt') as SVGElement | null;
     if (pt) this.highlightRow(pt);
   }
 
+  /** The table under a chart folds behind a one-line toggle; the choice is kept per block. */
+  private toggleTable(btn: HTMLElement): void {
+    const view = btn.closest<HTMLElement>('.dq');
+    const fold = btn.closest<HTMLElement>('.dq-fold');
+    const uuid = view?.dataset.macro;
+    if (!fold || !uuid) return;
+    if (!this.opened.delete(uuid)) this.opened.add(uuid);
+    setFold(fold, this.opened.has(uuid));
+  }
+
+  /** A point opens the table if folded, then marks its row: the merged `by` row, else the block's. */
   private highlightRow(pt: SVGElement): void {
-    const uuid = pt.dataset.uuid;
-    const view = pt.closest('.dq');
+    const { uuid, key } = pt.dataset;
+    const view = pt.closest<HTMLElement>('.dq');
     if (!uuid || !view) return;
+    const fold = view.querySelector<HTMLElement>('.dq-fold');
+    if (fold && view.dataset.macro) {
+      this.opened.add(view.dataset.macro);
+      setFold(fold, true);
+    }
     view.querySelectorAll('tr.dq-hl').forEach((tr) => tr.classList.remove('dq-hl'));
-    const tr = [...view.querySelectorAll<HTMLElement>('tr[data-uuid]')].find((r) => r.dataset.uuid === uuid);
+    const trs = [...view.querySelectorAll<HTMLElement>('tr[data-uuid]')];
+    const tr = (key !== undefined && trs.find((r) => r.dataset.key === key)) || trs.find((r) => r.dataset.uuid === uuid);
     if (!tr) return;
     tr.classList.add('dq-hl');
     tr.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -225,6 +264,15 @@ export class Interact {
     const t = e.target as Element | null;
     const box = t?.closest?.('.dq-chartbox') as HTMLElement | null;
     if (!box) return;
+    // An axis strip: an end opens a box to type that end, the middle resets that axis only.
+    const strip = t!.closest('.dq-axdrag') as SVGElement | null;
+    if (strip) {
+      e.preventDefault();
+      const ax = strip.dataset.ax === 'y' ? 'y' : 'x';
+      if (strip.dataset.end === '0' || strip.dataset.end === '1') this.openAxisInput(box, strip, ax, strip.dataset.end);
+      else this.resetAxis(box, ax);
+      return;
+    }
     const trace = (t!.closest('[data-trace]') as HTMLElement | SVGElement | null)?.dataset.trace;
     const st = this.stateOf(box);
     if (trace !== undefined) {
@@ -247,24 +295,102 @@ export class Interact {
 
   private onOver(e: MouseEvent): void {
     const mark = (e.target as Element | null)?.closest?.('.dq-pt, .dq-bar') as SVGElement | null;
-    const box = mark?.closest<HTMLElement>('.dq-chartbox');
-    const tip = box?.querySelector<HTMLElement>('.dq-tip');
-    if (!mark || !box || !tip || !mark.dataset.tip) return;
+    if (!mark?.closest('.dq-chartbox') || !mark.dataset.tip) return;
+    const tip = this.tip();
     tip.textContent = mark.dataset.tip;
+    // Colours are :root custom properties, so the trace colour resolves outside the view too.
     tip.style.background = mark.getAttribute('fill') ?? '';
     tip.hidden = false;
     const m = mark.getBoundingClientRect();
-    const b = box.getBoundingClientRect();
-    const right = m.right - b.left + 10;
-    const flip = right + tip.offsetWidth > box.clientWidth;
-    tip.style.left = `${flip ? m.left - b.left - 10 - tip.offsetWidth : right}px`;
-    tip.style.top = `${Math.max(0, m.top - b.top + m.height / 2 - tip.offsetHeight / 2)}px`;
+    const winW = this.doc.defaultView?.innerWidth ?? Infinity;
+    const right = m.right + 10;
+    const flip = right + tip.offsetWidth > winW;
+    tip.style.left = `${flip ? m.left - 10 - tip.offsetWidth : right}px`;
+    tip.style.top = `${Math.max(0, m.top + m.height / 2 - tip.offsetHeight / 2)}px`;
   }
 
   private onOut(e: MouseEvent): void {
-    const mark = (e.target as Element | null)?.closest?.('.dq-pt, .dq-bar');
-    const tip = mark?.closest('.dq-chartbox')?.querySelector<HTMLElement>('.dq-tip');
-    if (tip) tip.hidden = true;
+    if ((e.target as Element | null)?.closest?.('.dq-pt, .dq-bar')) this.hideTip();
+  }
+
+  private tip(): HTMLElement {
+    if (!this.tipEl?.isConnected) {
+      this.tipEl = this.doc.createElement('div');
+      this.tipEl.className = 'dq-tip';
+      this.tipEl.hidden = true;
+      this.doc.body.appendChild(this.tipEl);
+    }
+    return this.tipEl;
+  }
+
+  private hideTip(): void {
+    if (this.tipEl) this.tipEl.hidden = true;
+  }
+
+  // ---- axis range box ----
+
+  /** Plotly's double-click on an axis end: a text box over that end, prefilled like the ticks. */
+  private openAxisInput(box: HTMLElement, strip: SVGElement, ax: 'x' | 'y', end: '0' | '1'): void {
+    const svg = strip.closest('svg.dq-chart') as SVGSVGElement | null;
+    const d = currentDomain(box);
+    if (!svg || !d) return;
+    box.querySelector('input.dq-axin')?.remove();
+    const field = `${ax}${end}` as keyof Domain;
+    const steps = nums(svg.getAttribute('data-step'));
+    const step = steps?.[ax === 'x' ? 0 : 1] || Math.abs(d[field]) || 1;
+    const input = this.doc.createElement('input');
+    input.className = 'dq-axin';
+    input.type = 'text';
+    input.spellcheck = false;
+    input.value = formatTick(d[field], step);
+    input.dataset.ax = ax;
+    input.dataset.end = end;
+    input.setAttribute('aria-label', `${ax} axis ${end === '0' ? 'start' : 'end'}`);
+    const s = strip.getBoundingClientRect();
+    const b = box.getBoundingClientRect();
+    input.style.left = `${s.left - b.left + (ax === 'y' ? 2 : end === '0' ? 0 : s.width - 72)}px`;
+    input.style.top = `${s.top - b.top + (ax === 'x' ? 2 : end === '1' ? 0 : s.height - 22)}px`;
+    // Blur (clicking elsewhere) cancels.
+    input.addEventListener('blur', () => input.remove());
+    box.appendChild(input);
+    input.focus();
+    input.select();
+  }
+
+  private onAxisKey(input: HTMLInputElement, e: KeyboardEvent): void {
+    // Keys typed here belong to the box, not to Logseq's shortcuts.
+    e.stopPropagation();
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      input.remove();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const box = input.closest<HTMLElement>('.dq-chartbox');
+      const text = input.value.trim();
+      const v = Number(text);
+      input.remove();
+      const d = box && currentDomain(box);
+      // A typo or a range turned inside out changes nothing.
+      if (!box || !d || !text || !isFinite(v)) return;
+      const next = { ...d, [`${input.dataset.ax}${input.dataset.end}`]: v };
+      if (next.x0 >= next.x1 || next.y0 >= next.y1) return;
+      this.stateOf(box).view = next;
+      this.draw(box);
+    }
+  }
+
+  /** Back to the automatic range on one axis, keeping the other as it is. */
+  private resetAxis(box: HTMLElement, ax: 'x' | 'y'): void {
+    const st = this.stateOf(box);
+    const data = this.deps.view(box.dataset.macro!);
+    const w = box.querySelector<HTMLElement>('.dq-plot')?.clientWidth ?? 0;
+    if (!st.view || !data || w <= 0) return;
+    const auto = /data-dom="([^"]+)"/.exec(chartOf(data, { ...this.optsOf(st, w), view: undefined })?.html ?? '');
+    const a = nums(auto?.[1]);
+    if (!a) return;
+    st.view = ax === 'x' ? { ...st.view, x0: a[0], x1: a[1] } : { ...st.view, y0: a[2], y1: a[3] };
+    this.draw(box);
   }
 
   // ---- table pan ----
@@ -300,7 +426,7 @@ export class Interact {
     e.preventDefault();
     const ax = hit.dataset.ax === 'y' ? 'y' : 'x';
     const end = (['0', '1', 'pan'] as const).find((x) => x === hit.dataset.end) ?? 'pan';
-    this.axDrag = { box, ax, end, d, a, from: local(svg, e), cx: e.clientX, cy: e.clientY };
+    this.axDrag = { box, ax, end, d, a, from: local(svg, e), cx: e.clientX, cy: e.clientY, moved: false };
     return true;
   }
 
@@ -332,6 +458,8 @@ export class Interact {
     }
     if (this.axDrag) {
       const { box, ax, end, d, a, from, cx, cy } = this.axDrag;
+      if (!this.axDrag.moved && Math.abs(e.clientX - cx) < AXIS_SLOP && Math.abs(e.clientY - cy) < AXIS_SLOP) return;
+      this.axDrag.moved = true;
       const to = { x: from.x + e.clientX - cx, y: from.y + e.clientY - cy };
       this.stateOf(box).view = dragAxis(d, a, ax, end, from, to);
       this.draw(box);
@@ -372,6 +500,14 @@ export class Interact {
 }
 
 const nums = (s: string | null | undefined) => (s ? s.split(',').map(Number) : null);
+
+function setFold(fold: HTMLElement, open: boolean): void {
+  fold.classList.toggle('dq-open', open);
+  const btn = fold.querySelector<HTMLElement>('[data-act="table"]');
+  if (!btn) return;
+  btn.setAttribute('aria-expanded', String(open));
+  btn.textContent = tableToggleText(open, Number(fold.dataset.n ?? 0));
+}
 
 function currentDomain(box: Element): Domain | null {
   const v = nums(box.querySelector('svg.dq-chart')?.getAttribute('data-dom'));

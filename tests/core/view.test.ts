@@ -49,7 +49,7 @@ describe('renderInline', () => {
     expect(html).not.toContain('Open ↗');
     expect(html).toContain('value="by:run sort:gre" placeholder=');
     expect(html).toContain('<div class="dq-tbl" data-on-click="dqNoop">');
-    expect(html).toContain('<tr data-uuid="b">');
+    expect(html).toContain('<tr data-uuid="b" data-key="r2">');
     expect(html).toContain('2 rows');
     expect(html).toContain('⚠ 1');
     expect(html).toContain('data-on-click="dqJump" data-uuid="b"');
@@ -107,6 +107,19 @@ describe('renderInline', () => {
     expect(html).not.toContain('data-act="reset"');
     expect(html).not.toContain('data-name="err"');
     expect(real('bar', 'y:gre,thick')).toContain('<option value="gre,thick" selected>gre, thick</option>');
+  });
+
+  it('folds the table under a scatter or bar chart behind a toggle; the host can paint it open', () => {
+    const p = parseQuery('x:thick y:gre');
+    if (!p.ok) throw new Error('bad');
+    const res = runQuery(p.query, 'scatter', { blocks, types: TYPES, macroUuid: 'm' });
+    const closed = renderInline({ kind: 'scatter', macroUuid: 'm', dsl: 'x:thick y:gre', parsed: p, result: res });
+    expect(closed).toContain('<div class="dq-fold" data-on-click="dqNoop" data-n="2"><button class="dq-foldtg" data-act="table" aria-expanded="false">▸ Table (2 rows)</button><div class="dq-tbl"');
+    const open = renderInline({ kind: 'scatter', macroUuid: 'm', dsl: 'x:thick y:gre', parsed: p, result: res, tableOpen: true });
+    expect(open).toContain('class="dq-fold dq-open"');
+    expect(open).toContain('▾ Table (2 rows)');
+    expect(real('bar', '')).toContain('class="dq-fold"');
+    expect(real('table', '')).not.toContain('dq-fold');
   });
 
   it('escapes property values everywhere', () => {
