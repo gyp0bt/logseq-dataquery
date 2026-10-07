@@ -1,27 +1,24 @@
-import type { Cond, Query, Scope, SortKey } from './dsl';
+import type { Cond, Kind, Query } from './dsl';
 import { blockToRow, comparePriority, mergeRows, type Row, type SourceBlock } from './rows';
 import { parseContent } from './text';
 import {
-  compareValues, globToRegExp, inferType, resolveType, toList, toNumber, valuesEqual, type TypeOverrides, type ValueType,
+  cellMean, compareValues, inferType, isNumericType, resolveType, valuesEqual, type TypeOverrides, type ValueType,
 } from './types';
 
 export interface QueryContext {
   blocks: SourceBlock[];
   types: Record<string, ValueType>;
   macroUuid: string;
-  /** Lower-cased name of the page holding the macro. */
-  macroPage: string;
-  /** Blocks under the macro's parent (or the whole page when the macro is top level). */
-  hereIds: Set<string>;
   /** Position of each block of the macro's page in outline order. */
   order?: Map<string, number>;
 }
+/** The columns a chart draws: settings from the query, else defaults for the macro kind. */
+export interface Axes { x?: string; ys: string[]; color?: string }
 export interface QueryResult {
-  /** Rows after scope and merge, before filtering: the panel's filter domains. */
-  scoped: Row[];
   rows: Row[];
   cols: string[];
   types: Record<string, ValueType>;
+  axes: Axes;
   warnings: string[];
 }
 
@@ -41,39 +38,30 @@ export function computeTypes(blocks: SourceBlock[], ov: TypeOverrides): Record<s
 
 export const typeOf = (types: Record<string, ValueType>, key: string): ValueType => types[key] ?? 'string';
 
-function inScope(b: SourceBlock, scope: Scope, ctx: QueryContext): boolean {
-  if (b.uuid === ctx.macroUuid) return false;
-  if (scope.kind === 'all') return true;
-  if (scope.kind === 'here') return ctx.hereIds.has(b.uuid);
-  if (scope.kind === 'page') return b.page === ctx.macroPage;
-  return b.pathRefs.includes(scope.page.toLowerCase());
-}
+/** Columns a numeric axis can take: numbers, ratios and cells holding several numbers. */
+export const isAxisNumeric = (t: ValueType): boolean => isNumericType(t) || t === 'numlist';
 
 export function matchCond(row: Row, c: Cond, types: Record<string, ValueType>): boolean {
-  const t = typeOf(types, c.key);
   const v = row.values[c.key];
-  if (c.kind === 'in') return c.values.some((x) => valuesEqual(t, v, x));
-  if (c.kind === 'has') return toList(v)?.includes(Number(c.value)) ?? false;
-  if (c.op === '=') return valuesEqual(t, v, c.value);
-  if (c.op === '!=') return !valuesEqual(t, v, c.value);
-  const x = toNumber(v);
-  const y = Number(c.value);
+  if (c.kind === 'has') return v !== undefined;
+  const t = typeOf(types, c.key);
+  if (c.op === '==') return c.values.some((x) => valuesEqual(t, v, x));
+  if (c.op === '!=') return !c.values.some((x) => valuesEqual(t, v, x));
+  // A cell with several numbers compares by its mean, where the chart draws it.
+  const x = cellMean(v);
+  const y = Number(c.values[0]);
   if (isNaN(x)) return false;
   return c.op === '<' ? x < y : c.op === '<=' ? x <= y : c.op === '>' ? x > y : x >= y;
 }
 
-function sortRows(rows: Row[], sort: SortKey[], types: Record<string, ValueType>): Row[] {
+function sortRows(rows: Row[], sort: { key: string; desc: boolean }, types: Record<string, ValueType>): Row[] {
   return [...rows].sort((a, b) => {
-    for (const s of sort) {
-      const va = a.values[s.key];
-      const vb = b.values[s.key];
-      const c = compareValues(typeOf(types, s.key), va, vb);
-      if (!c) continue;
-      // Missing values stay last whatever the direction.
-      if (va === undefined || vb === undefined) return c;
-      return s.desc ? -c : c;
-    }
-    return 0;
+    const va = a.values[sort.key];
+    const vb = b.values[sort.key];
+    const c = compareValues(typeOf(types, sort.key), va, vb);
+    // Missing values stay last whatever the direction.
+    if (!c || va === undefined || vb === undefined) return c;
+    return sort.desc ? -c : c;
   });
 }
 
@@ -83,22 +71,32 @@ function keysInOrder(rows: Row[]): string[] {
   return [...seen];
 }
 
-function expandCols(patterns: string[], present: string[]): string[] {
-  const out: string[] = [];
-  for (const p of patterns) {
-    if (!p.includes('*')) out.push(p);
-    else out.push(...present.filter((k) => globToRegExp(p).test(k)));
-  }
-  return [...new Set(out)];
+function referencedKeys(q: Query): string[] {
+  const keys = q.conds.map((c) => c.key);
+  if (q.sort) keys.push(q.sort.key);
+  if (q.by) keys.push(q.by);
+  if (q.x) keys.push(q.x);
+  keys.push(...q.ys);
+  if (q.color) keys.push(q.color);
+  return [...new Set(keys)];
 }
 
-function referencedKeys(q: Query): string[] {
-  const keys = [...q.where.map((c) => c.key), ...q.sort.map((s) => s.key)];
-  if (q.mergeBy) keys.push(q.mergeBy);
-  if (q.plot?.kind === 'scatter') keys.push(q.plot.x, q.plot.y, ...(q.plot.color ? [q.plot.color] : []));
-  if (q.plot?.kind === 'bar') keys.push(q.plot.x, ...q.plot.ys);
-  keys.push(...(q.cols ?? []).filter((c) => !c.includes('*')));
-  return [...new Set(keys)];
+/** Settings win; otherwise scatter takes the first two numeric columns, bar a category against a number. */
+export function defaultAxes(q: Query, kind: Kind, cols: string[], types: Record<string, ValueType>): Axes {
+  const axes: Axes = { ys: [...q.ys] };
+  if (q.x) axes.x = q.x;
+  if (q.color) axes.color = q.color;
+  if (kind === 'table') return axes;
+  const numeric = cols.filter((k) => isAxisNumeric(typeOf(types, k)));
+  if (kind === 'scatter') {
+    axes.ys = axes.ys.slice(0, 1);
+    axes.x ??= numeric.find((k) => k !== axes.ys[0]);
+    if (!axes.ys.length) axes.ys = numeric.filter((k) => k !== axes.x).slice(0, 1);
+  } else {
+    axes.x ??= cols.find((k) => ['category', 'string'].includes(typeOf(types, k)));
+    if (!axes.ys.length) axes.ys = numeric.filter((k) => k !== axes.x).slice(0, 1);
+  }
+  return axes;
 }
 
 /** The database returns blocks in no particular order; restore the order the user wrote them in. */
@@ -112,19 +110,21 @@ function inOutlineOrder(blocks: SourceBlock[], order: Map<string, number> | unde
   });
 }
 
-/** scope → merge → where → sort → cols. */
-export function runQuery(q: Query, ctx: QueryContext): QueryResult {
-  let scoped = inOutlineOrder(ctx.blocks.filter((b) => inScope(b, q.scope, ctx)), ctx.order)
+/** refs → by → conditions → sort → cols and axes. */
+export function runQuery(q: Query, kind: Kind, ctx: QueryContext): QueryResult {
+  const tagged = ctx.blocks.filter((b) => b.uuid !== ctx.macroUuid && q.refs.every((r) => b.pathRefs.includes(r)));
+  let all = inOutlineOrder(tagged, ctx.order)
     .map(blockToRow)
     .filter((r): r is Row => r !== null);
-  // `from KEY`: rows are the blocks that carry KEY, one row per KEY value.
-  if (q.mergeBy) scoped = mergeRows(scoped.filter((r) => q.mergeBy! in r.values), q.mergeBy);
-  let rows = scoped.filter((r) => q.where.every((c) => matchCond(r, c, ctx.types)));
-  if (q.sort.length) rows = sortRows(rows, q.sort, ctx.types);
-  const present = keysInOrder(scoped);
-  const cols = (q.cols ? expandCols(q.cols, present) : present).filter((k) => k !== q.mergeBy);
+  // `by:KEY`: rows are the blocks that carry KEY, one row per KEY value.
+  if (q.by) all = mergeRows(all.filter((r) => q.by! in r.values), q.by);
+  let rows = all.filter((r) => q.conds.every((c) => matchCond(r, c, ctx.types)));
+  if (q.sort) rows = sortRows(rows, q.sort, ctx.types);
+  const present = keysInOrder(all);
+  const cols = present.filter((k) => k !== q.by);
   const warnings: string[] = [];
-  if (!scoped.length) warnings.push('No blocks with properties in this scope.');
-  else for (const k of referencedKeys(q)) if (!present.includes(k)) warnings.push(`No block in this scope has '${k}'.`);
-  return { scoped, rows, cols, types: ctx.types, warnings };
+  if (!all.length)
+    warnings.push(q.refs.length ? `No blocks with properties are tagged ${q.refs.map((r) => '#' + r).join(' ')}.` : 'No blocks with properties.');
+  else for (const k of referencedKeys(q)) if (!present.includes(k)) warnings.push(`No block has '${k}'.`);
+  return { rows, cols, types: ctx.types, axes: defaultAxes(q, kind, cols, ctx.types), warnings };
 }

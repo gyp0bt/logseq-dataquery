@@ -1,22 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { buildMacro, dslFromMacro, findMacro, replaceMacro } from '../../src/core/macroText';
+import { buildMacro, findMacro, MACRO_KINDS, replaceMacro } from '../../src/core/macroText';
 
 describe('macro text', () => {
-  const content = 'before {{renderer :dataquery, in [[a/b]] | where x in (1, 2)}} after\nk:: v';
-  it('finds the macro including [[links]]', () => {
-    expect(findMacro(content)).toBe('{{renderer :dataquery, in [[a/b]] | where x in (1, 2)}}');
+  const content = 'before {{renderer :DQscatter, #[[a b]] combine==none,mean x:a}} after\nk:: v';
+  it('maps macro names to kinds', () => expect(MACRO_KINDS).toEqual({ ':DQtable': 'table', ':DQscatter': 'scatter', ':DQbar': 'bar' }));
+  it('finds the macro, its kind and its query', () => {
+    expect(findMacro(content)).toEqual({ macro: '{{renderer :DQscatter, #[[a b]] combine==none,mean x:a}}', kind: 'scatter', dsl: '#[[a b]] combine==none,mean x:a' });
+    expect(findMacro('{{renderer :DQtable}}')).toEqual({ macro: '{{renderer :DQtable}}', kind: 'table', dsl: '' });
+    expect(findMacro('x {{renderer :DQbar ,  #t }}')!.dsl).toBe('#t');
     expect(findMacro('{{renderer :other}}')).toBeNull();
-    expect(findMacro('{{renderer :dataquery}}')).toBe('{{renderer :dataquery}}');
+    expect(findMacro('{{renderer :DQtables, #t}}')).toBeNull();
+    expect(findMacro('{{renderer :dataquery, sort x}}')).toBeNull();
   });
-  it('extracts and builds the DSL', () => {
-    expect(dslFromMacro('{{renderer :dataquery, in [[a/b]] | sort x}}')).toBe('in [[a/b]] | sort x');
-    expect(dslFromMacro('{{renderer :dataquery}}')).toBe('');
-    expect(buildMacro('')).toBe('{{renderer :dataquery}}');
-    expect(buildMacro(' sort x ')).toBe('{{renderer :dataquery, sort x}}');
+  it('builds the macro', () => {
+    expect(buildMacro('table', '')).toBe('{{renderer :DQtable}}');
+    expect(buildMacro('scatter', ' #t x:a ')).toBe('{{renderer :DQscatter, #t x:a}}');
+    expect(buildMacro('bar', '#t')).toBe('{{renderer :DQbar, #t}}');
   });
-  it('replaces only when the old macro is still there (Review Focus 5)', () => {
-    const old = findMacro(content)!;
-    expect(replaceMacro(content, old, 'sort y')).toBe('before {{renderer :dataquery, sort y}} after\nk:: v');
-    expect(replaceMacro(content, '{{renderer :dataquery, gone}}', 'sort y')).toBeNull();
+  it('replaces only when the old macro is still there', () => {
+    const old = findMacro(content)!.macro;
+    expect(replaceMacro(content, old, 'scatter', '#t')).toBe('before {{renderer :DQscatter, #t}} after\nk:: v');
+    expect(replaceMacro(content, '{{renderer :DQscatter, gone}}', 'scatter', '#t')).toBeNull();
   });
 });

@@ -4,7 +4,12 @@ export const VALUE_TYPES: readonly ValueType[] = ['number', 'numlist', 'string',
 const NUM = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
 export const isNumberText = (s: string): boolean => NUM.test(s.trim());
-export const isNumListText = (s: string): boolean => s.includes('/') && s.split('/').every(isNumberText);
+const LIST_SEP = /[/,]/;
+/** Two or more numbers separated by `/` or `,` (`8/16`, `1.27, 1.31`): several values in one cell. */
+export const isNumListText = (s: string): boolean => {
+  const parts = s.split(LIST_SEP);
+  return parts.length >= 2 && parts.every(isNumberText);
+};
 export const isNumericType = (t: ValueType): boolean => t === 'number' || t === 'ratio';
 
 export function toNumber(s: string | undefined): number {
@@ -14,9 +19,21 @@ export function toNumber(s: string | undefined): number {
 export function toList(s: string | undefined): number[] | null {
   if (s === undefined) return null;
   if (isNumberText(s)) return [Number(s)];
-  if (isNumListText(s)) return s.split('/').map(Number);
+  if (isNumListText(s)) return s.split(LIST_SEP).map(Number);
   return null;
 }
+
+export interface CellStats { mean: number; min: number; max: number; n: number }
+
+/** Mean, min, max and count of the numbers in one cell; a plain number has n = 1. */
+export function cellStats(s: string | undefined): CellStats | null {
+  const l = toList(s);
+  if (!l) return null;
+  return { mean: l.reduce((a, b) => a + b, 0) / l.length, min: Math.min(...l), max: Math.max(...l), n: l.length };
+}
+
+/** A cell's position on a numeric axis: the mean of its values. */
+export const cellMean = (s: string | undefined): number => cellStats(s)?.mean ?? NaN;
 
 export function inferType(values: string[]): ValueType {
   if (values.length === 0) return 'string';
@@ -62,41 +79,25 @@ const cmp = <T extends number | string>(a: T, b: T): number => (a < b ? -1 : a >
 /** Order two property texts by type; a missing value always sorts after a present one. */
 export function compareValues(t: ValueType, a: string | undefined, b: string | undefined): number {
   if (a === undefined || b === undefined) return a === b ? 0 : a === undefined ? 1 : -1;
-  if (t === 'numlist') {
-    const x = toList(a);
-    const y = toList(b);
-    if (x && y) {
-      for (let i = 0; i < Math.min(x.length, y.length); i++) {
-        const c = cmp(x[i], y[i]);
-        if (c) return c;
-      }
-      return cmp(x.length, y.length);
-    }
-    if (x || y) return x ? -1 : 1;
-    return cmp(a, b);
-  }
   if (t !== 'string') {
-    const x = toNumber(a);
-    const y = toNumber(b);
+    // Cells holding several numbers sort by their mean, as they are plotted.
+    const x = cellMean(a);
+    const y = cellMean(b);
     if (!isNaN(x) && !isNaN(y)) return cmp(x, y);
     if (!isNaN(x) || !isNaN(y)) return isNaN(x) ? 1 : -1;
   }
   return cmp(a, b);
 }
 
-/** Equality as the user means it: `0.20` equals `0.2` for numeric types. */
+/** Equality as the user means it: `0.20` equals `0.2` for numeric types; a list equals a number it contains. */
 export function valuesEqual(t: ValueType, a: string | undefined, b: string): boolean {
   if (a === undefined) return false;
-  if (t === 'numlist') {
+  if (t !== 'string') {
     const x = toList(a);
     const y = toList(b);
+    // `patch==16` on `8/16` means "contains 16".
+    if (x && y && x.length > 1 && y.length === 1) return x.includes(y[0]);
     if (x && y) return x.length === y.length && x.every((v, i) => v === y[i]);
-    return a === b;
-  }
-  if (t !== 'string') {
-    const x = toNumber(a);
-    const y = toNumber(b);
-    if (!isNaN(x) && !isNaN(y)) return x === y;
   }
   return a === b;
 }
