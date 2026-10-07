@@ -1,21 +1,29 @@
 # Data Query for Logseq
 
-Turn blocks with properties into a typed table, scatter plot or bar chart — right where you write them — and explore them in a filter panel.
+Turn blocks with properties into a typed table, scatter plot or bar chart — right where you write them.
 
 ```
 - Seed sweep
-  - {{renderer :dataquery, in here | sort score | plot scatter x=score y=loss color=seed}}
-  - run-a
+  - {{renderer :DQscatter, #work/nsb x:score y:loss color:seed}}
+  - run-a #work/nsb
     seed:: 0
     score:: 0.96
-    loss:: 1.27
-  - run-b
+    loss:: 1.27/1.31/1.29
+  - run-b #work/nsb
     seed:: 1
     score:: 1.10
     loss:: 0.88
 ```
 
-Type `/Data query` to insert the macro. Keep the comma after `:dataquery`, as with any Logseq renderer.
+Three macros, inserted with `/DQ table`, `/DQ scatter` and `/DQ bar`:
+
+| Macro | Shows | Buttons on the right |
+|---|---|---|
+| `{{renderer :DQtable, …}}` | table | CSV |
+| `{{renderer :DQscatter, …}}` | scatter plot + table | X▾ Y▾ Color▾ ± ⟲ ⤢ CSV |
+| `{{renderer :DQbar, …}}` | bar chart (means, min–max whiskers) + table | X▾ Y▾ ⤢ CSV |
+
+Keep the comma after the macro name, as with any Logseq renderer.
 
 ## Why
 
@@ -23,32 +31,59 @@ Logseq's built-in query tables compare property values as text, so `10 < 9`, `0.
 
 ## Which blocks become rows
 
-Every block in scope that has at least one property of its own. Blocks with only Logseq's built-in properties (`id`, `collapsed`, `heading`, …) and page-property blocks are skipped.
+Every block in the graph that has at least one property of its own. Blocks with only Logseq's built-in properties (`id`, `collapsed`, `heading`, …) and page-property blocks are skipped.
 
-## Query language
+## Query
 
-Clauses are separated by `|`; all are optional. An empty query shows every property block in the graph.
+Terms are separated by spaces and all must hold. An empty query shows every property block in the graph.
 
-| Clause | Meaning |
-|---|---|
-| `from key` | Rows are the blocks that have `key`; blocks with the same `key` value become one row. The newest journal wins; disagreements are flagged ⚠ (`merge by key` means the same) |
-| `in all` · `in here` · `in page` · `in [[Page]]` | Which blocks: the whole graph (default), blocks under the macro's parent, this page, or blocks that link to a page (tags on ancestors count) |
-| `where a < 1 and b in (x, y) and c has 16` | Filters. Operators: `= != < <= > >=`, `in (…)`, and `has n` for number lists such as `8/16`. Quote values containing spaces or commas: `note = "a, b"` |
-| `sort a desc, b` | Typed sort; blocks missing the key go last |
-| `cols a, b, prefix-*` | Table columns |
-| `plot scatter x=a y=b [color=c] [labels=on]` | Scatter plot. Hover a point for its values, click it to highlight its table row, drag to zoom, double-click to reset. `labels=on` writes every point's name on the chart |
-| `plot bar x=c y=a,b` | Bar chart of means per category; groups with 2+ rows show min–max whiskers. Hover a bar for its numbers |
+| Term | Meaning | Example |
+|---|---|---|
+| `#tag` `#[[a b]]` `[[page]]` | Blocks that reference the page (tags on ancestors count) | `#work/nsb` |
+| `key op value` | Filter. `op` is `== != < <= > >=` (`=` means `==`) | `seed==0` `gre-interp<0` |
+| `name:value` | Setting (below) | `x:gre-thin` `sort:-r2` |
+| `key` | Blocks that have the property | `gre-thin` |
 
-Charts have a toolbar on hover: zoom in, zoom out, reset axes, enlarge.
+- Numeric columns compare as numbers. `key==a,b` means a or b. On a number-list column such as `8/16`, `==16` means "contains 16". `<`, `>` and friends compare the mean of a multi-valued cell.
+- Quote values with spaces or commas: `note=="8 cells, seed"`.
 
-Edit the query right in the view: change the query line at the top and press Enter to write it back into the macro (Esc cancels). Mistakes are shown under the line with a caret, and nothing is saved until the query is valid. Click blank space in the view to edit the block's raw text, as with Logseq's own renderers.
+| Setting | Meaning | Default |
+|---|---|---|
+| `x:` `y:` | Axes. A bar chart takes several: `y:a,b` | Scatter: 1st and 2nd numeric column. Bar: x = 1st category/text column, y = 1st numeric column |
+| `color:` | Scatter colour groups | one colour |
+| `sort:key` / `sort:-key` | Ascending / descending; clicking a table header cycles it | outline order |
+| `by:run` | Blocks with the same `run` become one row; the newest journal wins and disagreeing cells get ⚠ | no merge |
+| `labels:on` | Write every point's name on the chart | names on hover |
+| `err:band` / `err:off` | How multi-valued cells are drawn (below) | error bars |
+
+Edit the query right in the view: change the line at the top and press Enter to write it back into the macro (Esc cancels). Mistakes are shown under the line with a caret, and nothing is saved until the query is valid. Click blank space in the view to edit the block's raw text, as with Logseq's own renderers.
+
+## Several values in one cell
+
+A property such as `loss:: 1.27/1.31/1.29` (or `1.27, 1.31`) holds several numbers, e.g. one per seed. Charts draw it at the mean and show the min–max:
+
+- **Scatter, `err:bar` (default):** a vertical bar when y has several values, a horizontal one when x does. Single values are plain points.
+- **Scatter, `err:band`:** per colour, means joined in x order over a translucent min–max band (like plotly's `fill='tonexty'`).
+- **Scatter, `err:off`:** points only.
+- **Bar:** each row counts at its mean; whiskers span the rows of a category.
+- Hover shows mean, min, max and n. The table shows the text as written and sorts by the mean.
+
+## Buttons and pointer
+
+- **X▾ Y▾ Color▾** pick a column; **±** cycles bar → band → off. These and table-header clicks rewrite the macro, so the view is saved with the page; any other text you wrote in the query stays as it was.
+- **⟲** resets zoom and **⤢** enlarges the chart; both are temporary and do not touch the macro.
+- **CSV** copies the rows and columns on screen to the clipboard.
+- Charts: hover for values, drag to zoom, double-click to reset, click a point to highlight its table row.
+- Tables: hold the middle button and drag to scroll sideways (and up and down). The middle click does not paste on Linux.
+
+The old `{{renderer :dataquery, …}}` macro is no longer drawn; replace it with one of the three above.
 
 ## Types
 
 Inferred per key across the whole graph:
 
 - `number` — every value is a number
-- `numlist` — numbers joined by `/`, e.g. `8/16`
+- `numlist` — numbers joined by `/` or `,`, e.g. `8/16`
 - `string` — anything else
 
 Override them on the types page (default `dataquery/types`, configurable in the plugin settings), as page properties at the top of the page. `*` matches any text; an exact key beats a pattern, and a longer pattern beats a shorter one.
@@ -58,12 +93,8 @@ seed:: category
 score-*:: ratio
 ```
 
-- `category` — discrete values (good for `color=` and bar `x=`), even when they look like numbers
+- `category` — discrete values (good for `color:` and bar `x:`), even when they look like numbers
 - `ratio` — a value divided by its threshold. Charts draw a dashed line at 1.00, a scatter with both axes `ratio` shades the passing corner, and table cells turn green below 1.00 and red at or above
-
-## Panel
-
-Click **Open ↗** on a view to filter with cards, switch chart type and axes, sort by clicking headers and change a column's type. The panel and the query text stay in sync; **Save to page** writes the query back into the macro (it refuses if the block was edited meanwhile).
 
 ## Install (development)
 
