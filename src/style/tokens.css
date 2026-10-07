@@ -1,0 +1,30 @@
+:root {
+  /* Chart colours copied from plotly's default templates (plotly / plotly_dark). */
+  --dq-c0: #636efa; --dq-c1: #EF553B; --dq-c2: #00cc96; --dq-c3: #ab63fa; --dq-c4: #FFA15A;
+  --dq-c5: #19d3f3; --dq-c6: #FF6692; --dq-c7: #B6E880; --dq-c8: #FF97FF; --dq-c9: #FECB52;
+  --dq-plot-bg: #E5ECF6; --dq-plot-grid: #ffffff; --dq-plot-fg: #2a3f5f; --dq-plot-line: #ffffff;
+  --dq-fail: #c2412d; --dq-fail-bg: #fbe9e5; --dq-pass: #2e7d4f; --dq-pass-bg: #e5f3ea;
+  --dq-warn: #b7791f; --dq-warn-bg: #fdf3dc;
+  --dq-bg: var(--ls-primary-background-color, #ffffff);
+  --dq-fg: var(--ls-primary-text-color, #1d2326);
+  --dq-muted: var(--ls-secondary-text-color, #6b7478);
+  --dq-line: var(--ls-border-color, #dfe3e1);
+  --dq-grid: var(--ls-quaternary-background-color, #eceeed);
+  --dq-code: var(--ls-secondary-background-color, #f2f4f3);
+  --dq-accent: var(--ls-link-text-color, #0e7c86);
+}
+html[data-theme='dark'] {
+  /* Chart colours copied from plotly's default templates (plotly / plotly_dark). */
+  --dq-c0: #636efa; --dq-c1: #EF553B; --dq-c2: #00cc96; --dq-c3: #ab63fa; --dq-c4: #FFA15A;
+  --dq-c5: #19d3f3; --dq-c6: #FF6692; --dq-c7: #B6E880; --dq-c8: #FF97FF; --dq-c9: #FECB52;
+  --dq-plot-bg: rgb(17,17,17); --dq-plot-grid: #283442; --dq-plot-fg: #f2f5fa; --dq-plot-line: #506784;
+  --dq-fail: #f07d69; --dq-fail-bg: #3a1f1a; --dq-pass: #6cc790; --dq-pass-bg: #173024;
+  --dq-warn: #e8b451; --dq-warn-bg: #3a2e14;
+  --dq-bg: var(--ls-primary-background-color, #1b2023);
+  --dq-fg: var(--ls-primary-text-color, #e4e8e9);
+  --dq-muted: var(--ls-secondary-text-color, #8d989c);
+  --dq-line: var(--ls-border-color, #2a3134);
+  --dq-grid: var(--ls-quaternary-background-color, #232a2d);
+  --dq-code: var(--ls-secondary-background-color, #20272a);
+  --dq-accent: var(--ls-link-text-color, #4fb8c1);
+}

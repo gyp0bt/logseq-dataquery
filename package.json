@@ -1,0 +1,33 @@
+{
+  "name": "logseq-dataquery",
+  "version": "0.1.0",
+  "description": "(Beta) Typed tables, scatter and bar charts for property blocks in Logseq",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.html",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "logseq": {
+    "id": "logseq-dataquery",
+    "title": "Data Query",
+    "icon": "./icon.svg"
+  },
+  "dependencies": {
+    "@logseq/libs": "^0.0.17"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  },
+  "author": "gyp0bt",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gyp0bt/logseq-dataquery"
+  }
+}
