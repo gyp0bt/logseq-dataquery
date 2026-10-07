@@ -20,7 +20,7 @@ Three macros, inserted with `/DQ table`, `/DQ scatter` and `/DQ bar`:
 | Macro | Shows | Buttons on the right |
 |---|---|---|
 | `{{renderer :DQtable, …}}` | table | CSV |
-| `{{renderer :DQscatter, …}}` | scatter plot + table | X▾ Y▾ Color▾ ± ⟲ ⤢ CSV |
+| `{{renderer :DQscatter, …}}` | scatter plot + table | X▾ Y▾ Color▾ ± ▤ ⟲ ⤢ CSV |
 | `{{renderer :DQbar, …}}` | bar chart (means, min–max whiskers) + table | X▾ Y▾ ⤢ CSV |
 
 Keep the comma after the macro name, as with any Logseq renderer.
@@ -50,7 +50,7 @@ Terms are separated by spaces and all must hold. An empty query shows every prop
 | Setting | Meaning | Default |
 |---|---|---|
 | `x:` `y:` | Axes. A bar chart takes several: `y:a,b` | Scatter: 1st and 2nd numeric column. Bar: x = 1st category/text column, y = 1st numeric column |
-| `color:` | Scatter colour groups | one colour |
+| `color:` | Scatter colour groups (one legend entry per group) | the `by:` value if set, else one colour |
 | `sort:key` / `sort:-key` | Ascending / descending; clicking a table header cycles it | outline order |
 | `by:run` | Blocks with the same `run` become one row; the newest journal wins and disagreeing cells get ⚠ | no merge |
 | `labels:on` | Write every point's name on the chart | names on hover |
@@ -70,11 +70,16 @@ A property such as `loss:: 1.27/1.31/1.29` (or `1.27, 1.31`) holds several numbe
 
 ## Buttons and pointer
 
-- **X▾ Y▾ Color▾** pick a column; **±** cycles bar → band → off. These and table-header clicks rewrite the macro, so the view is saved with the page; any other text you wrote in the query stays as it was.
-- **⟲** resets zoom and **⤢** enlarges the chart; both are temporary and do not touch the macro.
+- **X▾ Y▾ Color▾** pick a column (a bar chart's X takes any column). **±** (error bars) and **▤** (band) are on/off toggles; the lit one is active, pressing it turns both off (`err:off`). These and table-header clicks rewrite the macro, so the view is saved with the page; any other text you wrote in the query stays as it was.
+- **⟲** resets zoom and shows hidden traces; **⤢** enlarges the chart. Both are temporary and do not touch the macro.
 - **CSV** copies the rows and columns on screen to the clipboard.
-- Charts: hover for values, drag to zoom, double-click to reset, click a point to highlight its table row.
-- Tables: hold the middle button and drag to scroll sideways (and up and down). The middle click does not paste on Linux.
+- Charts: hover for values (the title is the `by:` value when set), drag to zoom, double-click blank plot area to reset, click a point to highlight its table row.
+- Axis handles (scatter): drag the left or right quarter of the x axis to move only that end, the middle to pan; the same for the y axis (bottom end, top end, middle).
+- **Ctrl + wheel** over a chart scales markers, lines and text (0.5×–3×). A plain wheel scrolls the page.
+- **Double-click** a legend entry, or a marker, line, band or bar of a trace, to hide that trace; its legend entry stays greyed so you can double-click it back.
+- Bar charts with many categories keep each category at least 56 px wide and scroll sideways.
+- Zoom, scale and hidden traces are temporary but survive the view being redrawn.
+- Tables: hold the middle button and drag to scroll sideways (the table moves against the pointer, like a scrollbar thumb). The middle click does not paste on Linux.
 
 The old `{{renderer :dataquery, …}}` macro is no longer drawn; replace it with one of the three above.
 
