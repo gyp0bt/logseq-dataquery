@@ -1,7 +1,10 @@
-import type { BarPlot, ScatterPlot } from './dsl';
+import type { ErrMode } from './dsl';
 import { esc } from './html';
 import { canonical, rowLabel, type Row } from './rows';
-import { compareValues, toNumber, type ValueType } from './types';
+import { cellMean, cellStats, compareValues, type CellStats, type ValueType } from './types';
+
+export interface ScatterSpec { x: string; y: string; color?: string; labels: boolean; err: ErrMode }
+export interface BarSpec { x: string; ys: string[] }
 
 export interface LegendItem { label: string; color: string; shape: 'dot' | 'square' | 'dash' | 'none' }
 export interface Chart { html: string; legend: LegendItem[] }
@@ -83,23 +86,30 @@ function axis(values: number[], view?: [number, number]): { lo: number; hi: numb
 }
 
 const tipLine = (k: string, v: string | undefined) => `${k}: ${v ?? ''}`;
+const p4 = (n: number) => Number(n.toPrecision(4));
+/** Hover line for an axis value; a cell with several numbers shows their mean, range and count. */
+const statLine = (k: string, v: string | undefined, st: CellStats) =>
+  st.n >= 2 ? `${k}: mean ${p4(st.mean)} · min ${st.min} · max ${st.max} · n=${st.n}` : tipLine(k, v);
 
 const catOf = (v: string | undefined) => (v === undefined ? NONE : canonical(v));
 
 const empty = (msg: string): Chart => ({ html: `<p class="dq-empty">${esc(msg)}</p>`, legend: [] });
 
-export function scatterSvg(rows: Row[], plot: ScatterPlot, types: Record<string, ValueType>, mergeBy?: string, opts: ChartOpts = {}): Chart {
+export function scatterSvg(rows: Row[], plot: ScatterSpec, types: Record<string, ValueType>, by?: string, opts: ChartOpts = {}): Chart {
   const b = box(opts.size);
   const { L, T, PW, PH, H } = b;
+  // A cell with several numbers is drawn at their mean; its min–max is the error bar or band.
   const pts = rows
-    .map((r) => ({ r, x: toNumber(r.values[plot.x]), y: toNumber(r.values[plot.y]) }))
-    .filter((p) => !isNaN(p.x) && !isNaN(p.y));
+    .map((r) => ({ r, sx: cellStats(r.values[plot.x]), sy: cellStats(r.values[plot.y]) }))
+    .filter((p): p is { r: Row; sx: CellStats; sy: CellStats } => p.sx !== null && p.sy !== null)
+    .map((p) => ({ ...p, x: p.sx.mean, y: p.sy.mean }));
   if (!pts.length) return empty(`No rows have numeric ${plot.x} and ${plot.y}.`);
   const rx = types[plot.x] === 'ratio';
   const ry = types[plot.y] === 'ratio';
-  // Ratio axes always include 1.00 so the threshold line is on screen.
-  const xs = pts.map((p) => p.x).concat(rx ? [1] : []);
-  const ys = pts.map((p) => p.y).concat(ry ? [1] : []);
+  const spread = plot.err !== 'off';
+  // Ratio axes always include 1.00 so the threshold line is on screen; ranges include the error bars.
+  const xs = pts.flatMap((p) => (spread ? [p.sx.min, p.sx.max] : [p.x])).concat(rx ? [1] : []);
+  const ys = pts.flatMap((p) => (spread ? [p.sy.min, p.sy.max] : [p.y])).concat(ry ? [1] : []);
   const v = opts.view;
   const ax = axis(xs, v && [v.x0, v.x1]);
   const ay = axis(ys, v && [v.y0, v.y1]);
@@ -135,14 +145,50 @@ export function scatterSvg(rows: Row[], plot: ScatterPlot, types: Record<string,
       legend.push({ label: `${plot.color} = ${c}`, color: colorFor(i), shape: 'dot' });
     });
   }
-  const labels = pts.map((p) => rowLabel(p.r, mergeBy));
+  const fillOf = (r: Row) => (plot.color ? colorOf.get(catOf(r.values[plot.color]))! : 'var(--dq-c0)');
+
+  // Bars and bands sit in a nested <svg> the size of the plot area, which clips them when zoomed.
+  let spreadG = '';
+  const multi = pts.some((p) => p.sx.n >= 2 || p.sy.n >= 2);
+  if (plot.err === 'bar') {
+    for (const p of pts) {
+      if (p.sy.n >= 2) {
+        const cx = f1(X(p.x)), a = f1(X(p.x) - 4), z = f1(X(p.x) + 4), hi = f1(Y(p.sy.max)), lo = f1(Y(p.sy.min));
+        spreadG += `<g class="dq-err"><line x1="${cx}" y1="${hi}" x2="${cx}" y2="${lo}"/><line x1="${a}" y1="${hi}" x2="${z}" y2="${hi}"/><line x1="${a}" y1="${lo}" x2="${z}" y2="${lo}"/></g>`;
+      }
+      if (p.sx.n >= 2) {
+        const cy = f1(Y(p.y)), a = f1(Y(p.y) - 4), z = f1(Y(p.y) + 4), lo = f1(X(p.sx.min)), hi = f1(X(p.sx.max));
+        spreadG += `<g class="dq-err"><line x1="${lo}" y1="${cy}" x2="${hi}" y2="${cy}"/><line x1="${lo}" y1="${a}" x2="${lo}" y2="${z}"/><line x1="${hi}" y1="${a}" x2="${hi}" y2="${z}"/></g>`;
+      }
+    }
+    if (multi) legend.push({ label: 'bars: min–max in each row', color: '', shape: 'none' });
+  } else if (plot.err === 'band') {
+    // Like plotly's fill='tonexty': per colour, means joined in x order over a translucent min–max band.
+    const groups = new Map<string, typeof pts>();
+    for (const p of pts) {
+      const f = fillOf(p.r);
+      if (!groups.has(f)) groups.set(f, []);
+      groups.get(f)!.push(p);
+    }
+    for (const [fill, ps] of groups) {
+      const sorted = [...ps].sort((a, b) => a.x - b.x);
+      const upper = sorted.map((p) => `${f1(X(p.x))},${f1(Y(p.sy.max))}`);
+      const lower = sorted.map((p) => `${f1(X(p.x))},${f1(Y(p.sy.min))}`).reverse();
+      spreadG += `<path class="dq-band" d="M${[...upper, ...lower].join(' L')} Z" fill="${fill}" fill-opacity="0.2"/>`;
+      spreadG += `<polyline class="dq-line" points="${sorted.map((p) => `${f1(X(p.x))},${f1(Y(p.y))}`).join(' ')}" stroke="${fill}" fill="none"/>`;
+    }
+    if (multi) legend.push({ label: 'band: min–max in each row', color: '', shape: 'none' });
+  }
+  if (spreadG) g += `<svg class="dq-clip" x="${L}" y="${T}" width="${PW}" height="${PH}" viewBox="${L} ${T} ${PW} ${PH}">${spreadG}</svg>`;
+
+  const labels = pts.map((p) => rowLabel(p.r, by));
   const prefix = plot.labels ? commonPrefix(labels) : '';
   const inside = (x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
   let dots = '';
   pts.forEach((p, i) => {
     if (!inside(p.x, p.y)) return;
-    const fill = plot.color ? colorOf.get(catOf(p.r.values[plot.color]))! : 'var(--dq-c0)';
-    const tip = [labels[i], tipLine(plot.x, p.r.values[plot.x]), tipLine(plot.y, p.r.values[plot.y])];
+    const fill = fillOf(p.r);
+    const tip = [labels[i], statLine(plot.x, p.r.values[plot.x], p.sx), statLine(plot.y, p.r.values[plot.y], p.sy)];
     if (plot.color) tip.push(tipLine(plot.color, p.r.values[plot.color]));
     // A pixel-sized chart gets hover boxes from the host script; the scaled one falls back to <title>.
     const title = b.sized ? '' : `<title>${esc(tip.join('\n'))}</title>`;
@@ -156,7 +202,8 @@ export function scatterSvg(rows: Row[], plot: ScatterPlot, types: Record<string,
   return { html: frame(b, g, `${plot.y} against ${plot.x}`, data), legend };
 }
 
-export function barGroups(rows: Row[], plot: BarPlot, types: Record<string, ValueType>): BarGroup[] {
+/** Each row counts once, at the mean of its cell; whiskers span the rows of a category. */
+export function barGroups(rows: Row[], plot: BarSpec, types: Record<string, ValueType>): BarGroup[] {
   const groups = new Map<string, Row[]>();
   for (const r of rows) {
     const v = r.values[plot.x];
@@ -170,7 +217,7 @@ export function barGroups(rows: Row[], plot: BarPlot, types: Record<string, Valu
       cat,
       n: rs.length,
       stats: plot.ys.map((k) => {
-        const v = rs.map((r) => toNumber(r.values[k])).filter((x) => !isNaN(x));
+        const v = rs.map((r) => cellMean(r.values[k])).filter((x) => !isNaN(x));
         if (!v.length) return null;
         return { mean: v.reduce((a, b) => a + b, 0) / v.length, min: Math.min(...v), max: Math.max(...v), n: v.length };
       }),
@@ -178,7 +225,7 @@ export function barGroups(rows: Row[], plot: BarPlot, types: Record<string, Valu
   });
 }
 
-export function barSvg(rows: Row[], plot: BarPlot, types: Record<string, ValueType>, opts: ChartOpts = {}): Chart {
+export function barSvg(rows: Row[], plot: BarSpec, types: Record<string, ValueType>, opts: ChartOpts = {}): Chart {
   const b = box(opts.size);
   const { L, T, PW, PH } = b;
   const groups = barGroups(rows, plot, types);

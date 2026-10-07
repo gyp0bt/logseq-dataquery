@@ -33,20 +33,20 @@ describe('ticks', () => {
 });
 
 describe('scatterSvg', () => {
-  const c = scatterSvg(rows, { kind: 'scatter', x: 'x', y: 'y', color: 'seed', labels: true }, types);
+  const c = scatterSvg(rows, { x: 'x', y: 'y', color: 'seed', labels: true, err: 'bar' }, types);
   it('draws one point per numeric row, with row ids and hover text', () => {
     expect(c.html.match(/<circle /g)).toHaveLength(4);
     expect(c.html).toContain('data-uuid="fsz-a" data-tip="fsz-a\nx: 1.27\ny: 0.96\nseed: 0"');
     expect(c.html).toContain('<title>');
   });
   it('a pixel-sized chart draws at that size, drops <title> and records its domain', () => {
-    const s = scatterSvg(rows, { kind: 'scatter', x: 'x', y: 'y', labels: false }, types, undefined, { size: { w: 900, h: 360 } });
+    const s = scatterSvg(rows, { x: 'x', y: 'y', labels: false, err: 'bar' }, types, undefined, { size: { w: 900, h: 360 } });
     expect(s.html).toContain('viewBox="0 0 900 360" width="900" height="360"');
     expect(s.html).not.toContain('<title>');
     expect(s.html).toMatch(/data-dom="1,1\.6,0\.8,2" data-box="64,16,816,292"/);
   });
   it('a zoomed view keeps its exact range and hides points outside it', () => {
-    const z = scatterSvg(rows, { kind: 'scatter', x: 'x', y: 'y', labels: false }, types, undefined, { view: { x0: 1.25, x1: 1.3, y0: 0.9, y1: 1.4 } });
+    const z = scatterSvg(rows, { x: 'x', y: 'y', labels: false, err: 'bar' }, types, undefined, { view: { x0: 1.25, x1: 1.3, y0: 0.9, y1: 1.4 } });
     expect(z.html.match(/<circle /g)).toHaveLength(2);
     expect(z.html).toContain('data-dom="1.25,1.3,0.9,1.4"');
   });
@@ -65,11 +65,11 @@ describe('scatterSvg', () => {
     ]);
   });
   it('labels=off removes point labels', () => {
-    const off = scatterSvg(rows, { kind: 'scatter', x: 'x', y: 'y', labels: false }, types);
+    const off = scatterSvg(rows, { x: 'x', y: 'y', labels: false, err: 'bar' }, types);
     expect(off.html).not.toContain('class="dq-lbl"');
   });
   it('explains when nothing is plottable', () => {
-    const none = scatterSvg(rows, { kind: 'scatter', x: 'combine', y: 'y', labels: true }, types);
+    const none = scatterSvg(rows, { x: 'combine', y: 'y', labels: true, err: 'bar' }, types);
     expect(none.html).toBe('<p class="dq-empty">No rows have numeric combine and y.</p>');
   });
 });
@@ -77,7 +77,7 @@ describe('scatterSvg', () => {
 describe('bar with negative means', () => {
   it('keeps the zero axis inside the chart', () => {
     const neg = [row('p', { g: 'a', v: '-3' }), row('q', { g: 'b', v: '-1' })];
-    const html = barSvg(neg, { kind: 'bar', x: 'g', ys: ['v'] }, { g: 'string', v: 'number' }).html;
+    const html = barSvg(neg, { x: 'g', ys: ['v'] }, { g: 'string', v: 'number' }).html;
     const heights = [...html.matchAll(/class="dq-bar" x="[^"]+" y="([^"]+)" width="[^"]+" height="([^"]+)"/g)].map((m) => [Number(m[1]), Number(m[2])]);
     for (const [y, h] of heights) {
       expect(y).toBeGreaterThanOrEqual(0);
@@ -87,7 +87,7 @@ describe('bar with negative means', () => {
 });
 
 describe('bar', () => {
-  const plot = { kind: 'bar', x: 'combine', ys: ['x', 'y'] } as const;
+  const plot = { x: 'combine', ys: ['x', 'y'] } as const;
   it('groups, sorts categories and computes mean/min/max', () => {
     const g = barGroups(rows, { ...plot, ys: [...plot.ys] }, types);
     expect(g.map((x) => [x.cat, x.n])).toEqual([['gate', 1], ['mean', 3], ['none', 1]]);
@@ -101,5 +101,56 @@ describe('bar', () => {
     const c = barSvg(rows, { ...plot, ys: [...plot.ys] }, types);
     expect(c.html.match(/class="dq-whisker"/g)).toHaveLength(2);
     expect(c.html).toContain('n=3');
+  });
+});
+
+describe('several values in one row', () => {
+  const multi = [
+    row('p', { x: '3', y: '1.27/1.31/1.29', s: 'a' }),
+    row('q', { x: '1', y: '1.3', s: 'a' }),
+    row('r', { x: '2/4', y: '2', s: 'b' }),
+    row('t', { x: '2', y: '1.0, 1.4', s: 'a' }),
+  ];
+  const mt = { x: 'numlist', y: 'numlist', s: 'string' } as const;
+  const draw = (err: 'bar' | 'band' | 'off', color?: string) => scatterSvg(multi, { x: 'x', y: 'y', color, labels: false, err }, mt).html;
+  const nums = (s: string) => s.split(/[ ,LMZ]+/).filter(Boolean).map(Number);
+
+  it('points sit at the mean; hover shows mean, min, max and n', () => {
+    const html = draw('off');
+    expect(html.match(/<circle /g)).toHaveLength(4);
+    expect(html).toContain('y: mean 1.29 · min 1.27 · max 1.31 · n=3');
+    expect(html).toContain('x: mean 3 · min 2 · max 4 · n=2');
+    expect(html).toContain('y: 1.3');
+  });
+  it('err:bar draws a vertical bar for several y and a horizontal one for several x, none for single values (Review Focus 5)', () => {
+    const html = draw('bar');
+    // p and t have several y, r has several x; q is a plain point.
+    expect(html.match(/class="dq-err"/g)).toHaveLength(3);
+    expect(html).toContain('class="dq-clip"');
+    const single = scatterSvg([row('q', { x: '1', y: '1.3' }), row('w', { x: '2', y: '1.5' })], { x: 'x', y: 'y', labels: false, err: 'bar' }, mt).html;
+    expect(single).not.toContain('dq-err');
+  });
+  it('err:band draws, per colour, a band through upper then lower bounds and a line through means in x order', () => {
+    const html = draw('band', 's');
+    const bands = [...html.matchAll(/<path class="dq-band" d="([^"]+)" fill="([^"]+)" fill-opacity="0.2"\/>/g)];
+    expect(bands).toHaveLength(2);
+    const a = nums(bands[0][1]);
+    const xs = a.filter((_, i) => i % 2 === 0);
+    expect(xs).toHaveLength(6);
+    expect(xs.slice(0, 3)).toEqual([...xs.slice(0, 3)].sort((m, n) => m - n));
+    expect(xs.slice(3)).toEqual([...xs.slice(0, 3)].reverse());
+    const line = /<polyline class="dq-line" points="([^"]+)" stroke="var\(--dq-c0\)"/.exec(html)!;
+    const lx = nums(line[1]).filter((_, i) => i % 2 === 0);
+    expect(lx).toEqual([...lx].sort((m, n) => m - n));
+    expect(html).not.toContain('dq-err');
+  });
+  it('err:off draws points only', () => {
+    const html = draw('off');
+    expect(html).not.toContain('dq-err');
+    expect(html).not.toContain('dq-band');
+  });
+  it('bar charts reduce each row to its mean first', () => {
+    const g = barGroups([row('a', { c: 'k', v: '1/3' }), row('b', { c: 'k', v: '4' })], { x: 'c', ys: ['v'] }, { c: 'string', v: 'numlist' });
+    expect(g[0].stats[0]).toEqual({ mean: 3, min: 2, max: 4, n: 2 });
   });
 });
