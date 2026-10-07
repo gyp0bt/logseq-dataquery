@@ -24,10 +24,10 @@ const mk = () => ({
 let deps: ReturnType<typeof mk>;
 let ui: Interact;
 
-function setup(kind: Kind, dsl = DSL) {
+function setup(kind: Kind, dsl = DSL, bs: SourceBlock[] = blocks) {
   const parsed = parseQuery(dsl);
   if (!parsed.ok) throw new Error('bad test query');
-  const result = runQuery(parsed.query, kind, { blocks, types, macroUuid: 'm' });
+  const result = runQuery(parsed.query, kind, { blocks: bs, types, macroUuid: 'm' });
   document.body.innerHTML = `<div id="slot">${renderInline({ kind, macroUuid: 'm', dsl, parsed, result })}</div>`;
   deps.view.mockReturnValue({ kind, query: parsed.query, result });
 }
@@ -322,6 +322,17 @@ describe('folded table under a chart', () => {
     ui.attach('slot');
     document.querySelector<SVGElement>('circle[data-key="2"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(document.querySelector('tr[data-key="2"]')!.classList.contains('dq-hl')).toBe(true);
+  });
+
+  it('with color: only, a point marks every row of its colour', () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const g = [block('a', 'A\nx:: 1\ny:: 10\ng:: p'), block('b', 'B\nx:: 1\ny:: 12\ng:: p'), block('c', 'C\nx:: 3\ny:: 30\ng:: q')];
+    setup('scatter', 'x:x y:y color:g', g);
+    ui.attach('slot');
+    expect(document.querySelectorAll('circle.dq-pt')).toHaveLength(2);
+    document.querySelector<SVGElement>('circle[data-key="p"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const hl = [...document.querySelectorAll<HTMLElement>('tr.dq-hl')].map((tr) => tr.dataset.uuid);
+    expect(hl).toEqual(['a', 'b']);
   });
 
   it('a table view has no fold', () => {

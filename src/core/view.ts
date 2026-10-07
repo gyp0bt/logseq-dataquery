@@ -56,8 +56,10 @@ export function tableHtml(result: QueryResult, q: Query, uuid: string): string {
           return `<td class="${cls}"${alt}>${esc(v ?? '')}${r.conflicts[k] ? '<sup>⚠</sup>' : ''}</td>`;
         })
         .join('');
-      // With `by:`, a chart point finds its merged row by the `by` value.
-      const key = q.by && r.values[q.by] !== undefined ? ` data-key="${esc(canonical(r.values[q.by]))}"` : '';
+      // A chart point finds its rows by the value of its group key: `by` (one merged row), else
+      // `color` (every row of that colour).
+      const gk = q.by ?? q.color;
+      const key = gk && r.values[gk] !== undefined ? ` data-key="${esc(canonical(r.values[gk]))}"` : '';
       return `<tr data-uuid="${esc(r.sources[0].uuid)}"${key}><td class="dq-link" data-on-click="dqJump" data-uuid="${esc(r.sources[0].uuid)}">${esc(rowLabel(r, q.by))}</td>${cells}</tr>`;
     })
     .join('');
@@ -78,9 +80,12 @@ export function chartOf(d: ViewData, opts: ChartOpts = {}): Chart | null {
   const { kind, query: q, result: res } = d;
   const { x, ys, color } = res.axes;
   if (kind === 'table' || !x || !ys.length) return null;
-  return kind === 'scatter'
-    ? scatterSvg(res.chartRows ?? res.rows, { x, y: ys[0], color, labels: q.labels, err: q.err }, res.types, q.by, opts)
-    : barSvg(res.rows, { x, ys }, res.types, opts);
+  if (kind === 'scatter')
+    return scatterSvg(res.chartRows ?? res.rows, { x, y: ys[0], color, labels: q.labels, err: q.err }, res.types, q.by, opts);
+  // With `x:` on the `by` key each category is one `by` value; its bar spans that value's blocks
+  // (unmerged), so the whisker shows their min–max instead of a single merged row.
+  const rows = q.by && x === q.by ? res.chartRows ?? res.rows : res.rows;
+  return barSvg(rows, { x, ys }, res.types, opts);
 }
 
 /** The caret message shown under the query field. */
@@ -105,6 +110,28 @@ function select(uuid: string, name: string, label: string, options: string[], cu
   return `<label class="dq-ctl"><span>${label}</span><select class="dq-sel" data-on-change="dqSet" data-macro="${esc(uuid)}" data-name="${name}" aria-label="${label}">${html}</select></label>`;
 }
 
+/**
+ * Bar chart Y: a chip per column drawn, each with × to remove it (only once `y:` is written), and
+ * a `+ Y` select of the numeric columns not drawn yet. The host rewrites `y:` from the macro text
+ * as it is when clicked; `data-default` is only the column drawn while there is no `y:`.
+ */
+function yChips(uuid: string, q: Query, ys: string[], numeric: string[]): string {
+  const m = esc(uuid);
+  const chips = ys
+    .map((k) => {
+      const x = q.ys.length
+        ? `<button class="dq-chipx" data-on-click="dqSet" data-macro="${m}" data-name="y" data-op="remove" data-col="${esc(k)}" title="Remove ${esc(k)}" aria-label="Remove ${esc(k)}">×</button>`
+        : '';
+      return `<span class="dq-chip">${esc(k)}${x}</span>`;
+    })
+    .join('');
+  const rest = numeric.filter((k) => !ys.includes(k));
+  const add = rest.length
+    ? `<select class="dq-sel dq-addy" data-on-change="dqSet" data-macro="${m}" data-name="y" data-op="add" data-default="${esc(ys.join(','))}" aria-label="Add a Y column"><option value="" selected>+ Y</option>${rest.map((k) => `<option value="${esc(k)}">${esc(k)}</option>`).join('')}</select>`
+    : '';
+  return `<div class="dq-ctl dq-ys"><span>Y</span><div class="dq-chips">${chips}</div>${add}</div>`;
+}
+
 const button = (act: string, icon: string, title: string) =>
   `<button class="dq-sb" data-act="${act}" title="${title}" aria-label="${title}">${icon}</button>`;
 
@@ -113,18 +140,19 @@ function sideHtml(inp: InlineInput, q: Query, res: QueryResult): string {
   const uuid = inp.macroUuid;
   const csv = button('csv', 'CSV', 'Copy the table as CSV');
   let html = '';
+  // The `by` key is the table's first column; the axes may take it too.
+  const cols = q.by ? [q.by, ...res.cols] : res.cols;
+  const numeric = cols.filter((k) => isAxisNumeric(typeOf(res.types, k)));
   if (inp.kind === 'scatter') {
-    const numeric = res.cols.filter((k) => isAxisNumeric(typeOf(res.types, k)));
     html += select(uuid, 'x', 'X', numeric, res.axes.x);
     html += select(uuid, 'y', 'Y', numeric, res.axes.ys[0]);
-    html += select(uuid, 'color', 'Color', res.cols, res.axes.color, 'none');
+    html += select(uuid, 'color', 'Color', cols, res.axes.color, 'none');
     html += errToggle(uuid, 'bar', q.err === 'bar', '±', 'Min–max error bars');
     html += errToggle(uuid, 'band', q.err === 'band', '▤', 'Min–max band');
     html += button('reset', '⟲', 'Reset axes (or double-click the plot)') + button('expand', '⤢', 'Enlarge') + csv;
   } else if (inp.kind === 'bar') {
-    const numeric = res.cols.filter((k) => isAxisNumeric(typeOf(res.types, k)));
-    html += select(uuid, 'x', 'X', res.cols, res.axes.x);
-    html += select(uuid, 'y', 'Y', numeric, res.axes.ys.join(',') || undefined);
+    html += select(uuid, 'x', 'X', cols, res.axes.x);
+    html += yChips(uuid, q, res.axes.ys, numeric);
     html += button('expand', '⤢', 'Enlarge') + csv;
   } else html += csv;
   return `<div class="dq-side" data-on-click="dqNoop" data-macro="${esc(uuid)}">${html}</div>`;

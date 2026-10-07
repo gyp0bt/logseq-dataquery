@@ -33,10 +33,11 @@ describe('ticks', () => {
 });
 
 describe('scatterSvg', () => {
-  const c = scatterSvg(rows, { x: 'x', y: 'y', color: 'seed', labels: true, err: 'bar' }, types);
+  const c = scatterSvg(rows, { x: 'x', y: 'y', labels: true, err: 'bar' }, types);
+  const cc = scatterSvg(rows, { x: 'x', y: 'y', color: 'seed', labels: false, err: 'bar' }, types);
   it('draws one point per numeric row, with row ids and hover text', () => {
     expect(c.html.match(/<circle /g)).toHaveLength(4);
-    expect(c.html).toContain('data-uuid="fsz-a" data-tip="fsz-a\nx: 1.27\ny: 0.96\nseed: 0"');
+    expect(c.html).toContain('data-uuid="fsz-a" data-tip="fsz-a\nx: 1.27\ny: 0.96"');
     expect(c.html).toContain('<title>');
   });
   it('a pixel-sized chart draws at that size, drops <title> and records its domain', () => {
@@ -57,11 +58,14 @@ describe('scatterSvg', () => {
   it('labels drop the common prefix; legend lists colours and the ratio line', () => {
     expect(c.html).toContain('>a</text>');
     expect(c.legend).toEqual([
+      { label: 'ratio 1.00', color: 'var(--dq-fail)', shape: 'dash' },
+      { label: "labels omit 'fsz-'", color: '', shape: 'none' },
+    ]);
+    expect(cc.legend).toEqual([
       { label: 'seed = 0', color: 'var(--dq-c0)', shape: 'dot', trace: 'seed = 0', off: false },
       { label: 'seed = 1', color: 'var(--dq-c1)', shape: 'dot', trace: 'seed = 1', off: false },
       { label: 'seed = 2', color: 'var(--dq-c2)', shape: 'dot', trace: 'seed = 2', off: false },
       { label: 'ratio 1.00', color: 'var(--dq-fail)', shape: 'dash' },
-      { label: "labels omit 'fsz-'", color: '', shape: 'none' },
     ]);
   });
   it('labels=off removes point labels', () => {
@@ -289,5 +293,53 @@ describe('scatter groups by by:', () => {
     const c = draw([...one, ...many], 'bar', 'seed');
     expect(c.legend.filter((l) => l.trace).map((l) => l.label)).toEqual(['seed = 0', 'seed = (none)']);
     expect(c.html).toMatch(/<circle[^>]*data-trace="seed = 0"[^>]*data-key="r1"/);
+  });
+});
+
+describe('scatter groups by color: (no by:)', () => {
+  const gt = { g: 'string', x: 'number', y: 'numlist' } as const;
+  const rs = [
+    row('p', { g: 'A', x: '2', y: '1' }), row('q', { g: 'A', x: '2', y: '3' }),
+    row('r', { g: 'B', x: '3', y: '2' }), row('s', { g: 'B', x: '1', y: '5' }), row('t', { g: 'B', x: '2', y: '4/4.5' }),
+  ];
+  const draw = (err: 'bar' | 'band' | 'off', color?: string) =>
+    scatterSvg(rs, { x: 'x', y: 'y', color, labels: false, err }, gt, undefined, { size: { w: 800, h: 360 } });
+
+  it('rows sharing a colour and an x pool into one mean marker with the min–max of their y', () => {
+    const c = draw('bar', 'g');
+    expect(c.html.match(/<circle /g)).toHaveLength(4);
+    expect(c.html).toContain('data-key="A" data-tip="A\nx: 2\ny: mean 2 · min 1 · max 3 · n=2"');
+    expect(c.html).toMatch(/<g class="dq-err" data-trace="g = A"/);
+  });
+  it('a colour group with several x draws a line through its means sorted by x', () => {
+    const c = draw('bar', 'g');
+    const lines = [...c.html.matchAll(/<polyline class="dq-line" points="([^"]+)"[^>]*data-trace="([^"]+)"/g)];
+    expect(lines.map((l) => l[2])).toEqual(['g = B']);
+    const xs = lines[0][1].split(' ').map((p) => Number(p.split(',')[0]));
+    expect(xs).toEqual([...xs].sort((m, n) => m - n));
+    expect(xs).toHaveLength(3);
+  });
+  it('err:band bands the multi-x colour group; err:off keeps its line only', () => {
+    expect(draw('band', 'g').html.match(/class="dq-band"/g)).toHaveLength(1);
+    const off = draw('off', 'g').html;
+    expect(off).toContain('class="dq-line"');
+    expect(off).not.toContain('dq-err');
+  });
+  it('without by: or color: each row is its own point', () => {
+    const c = draw('bar');
+    expect(c.html.match(/<circle /g)).toHaveLength(5);
+    expect(c.html).not.toContain('dq-line');
+    expect(c.html).not.toContain('data-key=');
+  });
+});
+
+describe('bar chart width with several y columns', () => {
+  const cats = Array.from({ length: 10 }, (_, i) => row(`r${i}`, { c: `c${i}`, a: '1', b: '2', d: '3' }));
+  const t = { c: 'string', a: 'number', b: 'number', d: 'number' } as const;
+  const width = (ys: string[]) => Number(/width="(\d+)"/.exec(barSvg(cats, { x: 'c', ys }, t, { size: { w: 300, h: 360 } }).html)![1]);
+  it('each extra y series widens the minimum category width', () => {
+    expect(width(['a'])).toBeGreaterThanOrEqual(10 * 56);
+    expect(width(['a', 'b'])).toBeGreaterThan(width(['a']));
+    expect(width(['a', 'b', 'd'])).toBeGreaterThan(width(['a', 'b']));
   });
 });

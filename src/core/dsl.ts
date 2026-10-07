@@ -232,6 +232,31 @@ export function setSetting(text: string, name: SettingName, value: string | null
   return out;
 }
 
+function ysOf(text: string): string[] {
+  const parsed = parseQuery(text);
+  if (!parsed.ok) throw new Error(`Fix the query first: ${parsed.error.message}`);
+  return parsed.query.ys;
+}
+
+/**
+ * Bar chart `+ Y`: append `col` to `y:`. Without a `y:` setting the chart shows `fallback` (the
+ * default column), so the new setting keeps it first. A column already shown is not added twice.
+ */
+export function addY(text: string, col: string, fallback: string[] = []): string {
+  const cur = ysOf(text);
+  const ys = cur.length ? cur : fallback;
+  if (ys.includes(col)) return text;
+  return setSetting(text, 'y', [...ys, col].join(','));
+}
+
+/** Bar chart chip ×: drop `col` from `y:`; dropping the last one removes the setting (back to the default). */
+export function removeY(text: string, col: string): string {
+  const cur = ysOf(text);
+  if (!cur.includes(col)) return text;
+  const ys = cur.filter((k) => k !== col);
+  return setSetting(text, 'y', ys.length ? ys.join(',') : null);
+}
+
 /**
  * The `±` (error bars) and `▤` (band) buttons are two exclusive on/off toggles over `err:`.
  * Returns the new `err:` value, or null to remove the setting (bars, the default).

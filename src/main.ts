@@ -1,8 +1,8 @@
 import '@logseq/libs';
-import { joinMacroArgs, type Kind, type SettingName } from './core/dsl';
+import { joinMacroArgs, type Kind } from './core/dsl';
 import { buildMacro, LEGACY_TYPE, MACRO_KINDS } from './core/macroText';
 import { renderLegacy } from './core/view';
-import { errorText, jumpTo, readMacro, saveDsl, setSettingInMacro, toggleErrInMacro } from './host/actions';
+import { applyControl, errorText, jumpTo, readMacro, saveDsl, type SetEvent } from './host/actions';
 import type { LogseqLike } from './host/api';
 import { Engine } from './host/engine';
 import { InlineViews } from './host/inline';
@@ -11,7 +11,6 @@ import inlineCss from './style/inline.css?raw';
 import tokensCss from './style/tokens.css?raw';
 
 const DEFAULT_TYPES_PAGE = 'dataquery/types';
-const SETTING_NAMES: readonly string[] = ['x', 'y', 'color', 'sort', 'by', 'labels', 'err'] satisfies SettingName[];
 
 const api = logseq as unknown as LogseqLike;
 const typesPage = () => String(logseq.settings?.typesPage || DEFAULT_TYPES_PAGE);
@@ -25,31 +24,6 @@ function report(e: unknown): void {
 async function setDslFromView(uuid: string, next: string): Promise<void> {
   const { macro, kind, dsl } = await readMacro(api, uuid);
   if (next !== dsl) await saveDsl(api, uuid, macro, kind, next);
-}
-
-/**
- * `data-on-*` models receive `{ value, dataset }`; a button names its value, a select carries it.
- * An on/off button (`data-toggle`) names neither: its next value is read from the macro when pressed.
- */
-interface SetEvent { value?: string; dataset: { macro?: string; name?: string; value?: string; toggle?: string } }
-
-function onSet(e: SetEvent): void {
-  const { macro, name, toggle } = e.dataset;
-  if (!macro || !name || !SETTING_NAMES.includes(name)) {
-    report(new Error(`Data query: unexpected control '${name}'.`));
-    return;
-  }
-  if (toggle !== undefined) {
-    if (name !== 'err' || (toggle !== 'bar' && toggle !== 'band')) {
-      report(new Error(`Data query: unexpected toggle '${name}:${toggle}'.`));
-      return;
-    }
-    toggleErrInMacro(api, macro, toggle).catch(report);
-    return;
-  }
-  const value = e.dataset.value ?? e.value ?? '';
-  // An empty value ("none", or the default of a cycle) removes the setting.
-  setSettingInMacro(api, macro, name as SettingName, value === '' ? null : value).catch(report);
 }
 
 async function main(): Promise<void> {
@@ -141,7 +115,7 @@ async function main(): Promise<void> {
     dqNoop: () => {},
     dqEdit: (e: { dataset: { macro: string } }) =>
       logseq.Editor.editBlock(e.dataset.macro).catch((err) => report(new Error('Could not open the block for editing.', { cause: err }))),
-    dqSet: (e: SetEvent) => onSet(e),
+    dqSet: (e: SetEvent) => applyControl(api, e).catch(report),
   });
 
   const kinds: Array<[string, Kind]> = [['DQ table', 'table'], ['DQ scatter', 'scatter'], ['DQ bar', 'bar']];

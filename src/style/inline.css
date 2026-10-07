@@ -26,6 +26,11 @@
 .dq-sb { font: inherit; min-width: 2.4em; color: var(--dq-fg); background: transparent; border: 1px solid var(--dq-line); border-radius: 4px; padding: 2px 6px; cursor: pointer; }
 .dq-sb:hover, .dq-sel:hover { border-color: var(--dq-accent); }
 .dq-sb[aria-pressed="true"] { background: var(--dq-accent); border-color: var(--dq-accent); color: #fff; }
+.dq-chips { display: flex; flex-direction: column; gap: 2px; }
+.dq-chip { display: inline-flex; align-items: center; justify-content: space-between; gap: 4px; max-width: 9em; color: var(--dq-fg); background: var(--dq-code); border: 1px solid var(--dq-line); border-radius: 10px; padding: 0 2px 0 7px; overflow-wrap: anywhere; }
+.dq-chipx { font: inherit; line-height: 1; color: var(--dq-muted); background: transparent; border: 0; border-radius: 50%; padding: 1px 4px; cursor: pointer; }
+.dq-chipx:hover { color: #fff; background: var(--dq-fail); }
+.dq-addy { margin-top: 2px; }
 .dq-chartbox { position: relative; padding: 6px 8px 2px; border-bottom: 1px solid var(--dq-line); }
 .dq-chartbox .dq-legend { color: var(--dq-plot-fg); }
 /* Look copied from plotly's default template: blue-grey plot area, white grid, no axis box,

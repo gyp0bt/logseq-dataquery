@@ -50,6 +50,9 @@ describe('renderInline', () => {
     expect(html).toContain('value="by:run sort:gre" placeholder=');
     expect(html).toContain('<div class="dq-tbl" data-on-click="dqNoop">');
     expect(html).toContain('<tr data-uuid="b" data-key="r2">');
+    // Without by:, color: keys the rows so a point of a colour group can mark all of them.
+    const byColor = view('table', 'color:seed', result([row('a', { seed: '0' }), row('b', { seed: '0' })], ['seed']));
+    expect(byColor.match(/<tr data-uuid="[ab]" data-key="0">/g)).toHaveLength(2);
     expect(html).toContain('2 rows');
     expect(html).toContain('⚠ 1');
     expect(html).toContain('data-on-click="dqJump" data-uuid="b"');
@@ -101,12 +104,37 @@ describe('renderInline', () => {
     const html = real('bar', '');
     const sel = (name: string) => new RegExp(`data-name="${name}"[^>]*>(.*?)</select>`).exec(html)![1];
     expect(sel('x')).toBe('<option value="run" selected>run</option><option value="gre">gre</option><option value="thick">thick</option><option value="seed">seed</option>');
-    expect(sel('y')).toBe('<option value="gre" selected>gre</option><option value="thick">thick</option>');
+    // Y is a chip per column plus a + Y select of the numeric columns not shown yet.
+    expect(real('bar', 'y:gre')).toContain('<span class="dq-chip">gre<button class="dq-chipx" data-on-click="dqSet" data-macro="m" data-name="y" data-op="remove" data-col="gre"');
+    // The default column (no y: yet) has nothing to remove.
+    expect(html).toContain('<span class="dq-chip">gre</span>');
+    expect(sel('y" data-op="add')).toBe('<option value="" selected>+ Y</option><option value="thick">thick</option>');
     expect(html).toContain('data-act="expand"');
     expect(html).toContain('data-act="csv"');
     expect(html).not.toContain('data-act="reset"');
     expect(html).not.toContain('data-name="err"');
-    expect(real('bar', 'y:gre,thick')).toContain('<option value="gre,thick" selected>gre, thick</option>');
+    const two = real('bar', 'y:gre,thick');
+    expect(two.match(/class="dq-chip"/g)).toHaveLength(2);
+    expect(two).not.toContain('data-op="add"');
+  });
+
+  it('the by key can be a bar X: one category per by value, whiskers over its blocks', () => {
+    const bs: SourceBlock[] = [
+      { ...blocks[0], uuid: 'p', content: 'P\nrun:: r1\ngre:: 1' },
+      { ...blocks[0], uuid: 'q', content: 'Q\nrun:: r1\ngre:: 3' },
+      { ...blocks[0], uuid: 's', content: 'S\nrun:: r2\ngre:: 2' },
+    ];
+    const draw = (dsl: string) => {
+      const p = parseQuery(dsl);
+      if (!p.ok) throw new Error(p.error.message);
+      return view('bar', dsl, runQuery(p.query, 'bar', { blocks: bs, types: TYPES, macroUuid: 'm' }));
+    };
+    const html = draw('by:run x:run y:gre');
+    expect(/data-name="x"[^>]*>(.*?)<\/select>/.exec(html)![1]).toContain('<option value="run" selected>run</option>');
+    expect(html).toContain('data-tip="run: r1\ngre: mean 2.000\nmin 1 · max 3 · n=2"');
+    expect(html.match(/class="dq-whisker"/g)).toHaveLength(1);
+    // Choosable before it is chosen, too.
+    expect(draw('by:run y:gre')).toMatch(/data-name="x"[^>]*>.*<option value="run">run<\/option>/);
   });
 
   it('folds the table under a scatter or bar chart behind a toggle; the host can paint it open', () => {

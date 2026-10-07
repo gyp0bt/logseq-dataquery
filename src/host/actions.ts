@@ -1,4 +1,4 @@
-import { parseQuery, setSetting, toggleErr, type Kind, type SettingName } from '../core/dsl';
+import { addY, parseQuery, removeY, setSetting, toggleErr, type Kind, type SettingName } from '../core/dsl';
 import { buildMacro, findMacro, replaceMacro } from '../core/macroText';
 import type { LogseqLike } from './api';
 
@@ -59,6 +59,46 @@ export async function toggleErrInMacro(api: LogseqLike, macroUuid: string, butto
   if (!parsed.ok) throw new Error(`Fix the query first: ${parsed.error.message}`);
   const next = setSetting(dsl, 'err', toggleErr(parsed.query.err, button));
   if (next !== dsl) await saveDsl(api, macroUuid, macro, kind, next);
+}
+
+/** `+ Y` / chip ×: add or remove one bar-chart y column, worked out from the macro text as it is now. */
+export async function editYInMacro(api: LogseqLike, macroUuid: string, op: 'add' | 'remove', col: string, fallback: string[] = []): Promise<void> {
+  const { macro, kind, dsl } = await readMacro(api, macroUuid);
+  const next = op === 'add' ? addY(dsl, col, fallback) : removeY(dsl, col);
+  if (next !== dsl) await saveDsl(api, macroUuid, macro, kind, next);
+}
+
+export const SETTING_NAMES: readonly string[] = ['x', 'y', 'color', 'sort', 'by', 'labels', 'err'] satisfies SettingName[];
+
+/**
+ * What a `data-on-*` control sends: a select carries `value`, a button names `data-value`.
+ * An on/off button (`data-toggle`) and the bar Y chips (`data-op`) name neither: their next
+ * value is read from the macro when pressed.
+ */
+export interface SetEvent {
+  value?: string;
+  dataset: { macro?: string; name?: string; value?: string; toggle?: string; op?: string; col?: string; default?: string };
+}
+
+/** Apply one side-panel or table-header control to the macro. */
+export async function applyControl(api: LogseqLike, e: SetEvent): Promise<void> {
+  const { macro, name, toggle, op } = e.dataset;
+  if (!macro || !name || !SETTING_NAMES.includes(name)) throw new Error(`Data query: unexpected control '${name}'.`);
+  if (toggle !== undefined) {
+    if (name !== 'err' || (toggle !== 'bar' && toggle !== 'band')) throw new Error(`Data query: unexpected toggle '${name}:${toggle}'.`);
+    return toggleErrInMacro(api, macro, toggle);
+  }
+  if (op !== undefined) {
+    if (name !== 'y' || (op !== 'add' && op !== 'remove')) throw new Error(`Data query: unexpected control '${name}:${op}'.`);
+    const col = op === 'add' ? e.value ?? '' : e.dataset.col ?? '';
+    // The `+ Y` select's blank first option changes nothing.
+    if (!col) return;
+    const fallback = (e.dataset.default ?? '').split(',').filter(Boolean);
+    return editYInMacro(api, macro, op, col, fallback);
+  }
+  const value = e.dataset.value ?? e.value ?? '';
+  // An empty value ("none", or the default of a cycle) removes the setting.
+  return setSettingInMacro(api, macro, name as SettingName, value === '' ? null : value);
 }
 
 export async function jumpTo(api: LogseqLike, uuid: string): Promise<void> {

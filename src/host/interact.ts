@@ -213,7 +213,10 @@ export class Interact {
     setFold(fold, this.opened.has(uuid));
   }
 
-  /** A point opens the table if folded, then marks its row: the merged `by` row, else the block's. */
+  /**
+   * A point opens the table if folded, then marks its rows: those sharing its group key (the merged
+   * `by` row, or every row of a `color` group), else the block's own row.
+   */
   private highlightRow(pt: SVGElement): void {
     const { uuid, key } = pt.dataset;
     const view = pt.closest<HTMLElement>('.dq');
@@ -225,10 +228,11 @@ export class Interact {
     }
     view.querySelectorAll('tr.dq-hl').forEach((tr) => tr.classList.remove('dq-hl'));
     const trs = [...view.querySelectorAll<HTMLElement>('tr[data-uuid]')];
-    const tr = (key !== undefined && trs.find((r) => r.dataset.key === key)) || trs.find((r) => r.dataset.uuid === uuid);
-    if (!tr) return;
-    tr.classList.add('dq-hl');
-    tr.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    const byKey = key !== undefined ? trs.filter((r) => r.dataset.key === key) : [];
+    const hit = byKey.length ? byKey : trs.filter((r) => r.dataset.uuid === uuid).slice(0, 1);
+    if (!hit.length) return;
+    for (const tr of hit) tr.classList.add('dq-hl');
+    hit[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   /** Buttons in the side column that change only what is on screen, not the macro. */

@@ -29,6 +29,8 @@ export interface Area { L: number; T: number; PW: number; PH: number }
 
 /** Narrowest a bar-chart category may get before the chart grows wider than its box. */
 export const MIN_CAT_W = 56;
+/** Width each y series past the first adds to that minimum, so grouped bars stay readable. */
+export const MIN_SERIES_W = 24;
 
 interface Box extends Area { W: number; H: number; B: number; s: number; sized: boolean; reqW?: number }
 function box(size: ChartSize | undefined, s: number, minPW = 0): Box {
@@ -108,23 +110,23 @@ const empty = (msg: string): Chart => ({ html: `<p class="dq-empty">${esc(msg)}<
 
 /** One x position of a group: every y number found there, and the first block to jump to. */
 export interface GroupPoint { x: number; ys: number[]; mean: number; min: number; max: number; uuid: string }
-/** Points that belong together: the blocks of one `by` value, or a single row without `by`. */
+/** Points that belong together: the rows of one group-key value (`by`, else `color`), or a single row. */
 export interface ScatterGroup { key?: string; label: string; first: Row; pts: GroupPoint[] }
 
 const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
 
 /**
- * Groups rows for the scatter plot. With `by`, rows sharing a `by` value form one group; without,
- * each row is its own group. Inside a group the y numbers are pooled per distinct x (a row sits at
+ * Groups rows for the scatter plot. With a group key (`by`, else `color`), rows sharing its value
+ * form one group; without, each row is its own group. Inside a group the y numbers are pooled per distinct x (a row sits at
  * the mean of its x cell; every number of its y cell counts), and points come sorted by x.
  */
-export function scatterGroups(rows: Row[], plot: { x: string; y: string }, by?: string): ScatterGroup[] {
+export function scatterGroups(rows: Row[], plot: { x: string; y: string }, groupKey?: string): ScatterGroup[] {
   const groups = new Map<string, { key?: string; label: string; first: Row; at: Map<number, { ys: number[]; uuid: string }> }>();
   rows.forEach((r, i) => {
     const sx = cellStats(r.values[plot.x]);
     const ly = toList(r.values[plot.y]);
     if (!sx || !ly) return;
-    const key = by ? catOf(r.values[by]) : undefined;
+    const key = groupKey ? catOf(r.values[groupKey]) : undefined;
     const id = key ?? `#${i}`;
     if (!groups.has(id)) groups.set(id, { key, label: key ?? rowLabel(r), first: r, at: new Map() });
     const g = groups.get(id)!;
@@ -143,7 +145,8 @@ export function scatterGroups(rows: Row[], plot: { x: string; y: string }, by?: 
 export function scatterSvg(rows: Row[], plot: ScatterSpec, types: Record<string, ValueType>, by?: string, opts: ChartOpts = {}): Chart {
   const b = box(opts.size, scaleOf(opts));
   const { L, T, PW, PH, H, B, s } = b;
-  const groups = scatterGroups(rows, plot, by);
+  // Rows group by `by`, else by `color`: a colour then pools like a `by` group (mean + min–max).
+  const groups = scatterGroups(rows, plot, by ?? plot.color);
   if (!groups.length) return empty(`No rows have numeric ${plot.x} and ${plot.y}.`);
   // Colour groups are the traces: `color:` when given (a group takes its first row's value), else `by:`.
   const ckey = plot.color ?? by;
@@ -237,7 +240,8 @@ export function scatterSvg(rows: Row[], plot: ScatterSpec, types: Record<string,
       if (!inside(p.x, p.mean)) continue;
       const n = p.ys.length;
       const tip = [gr.label, `${plot.x}: ${p4(p.x)}`, n >= 2 ? `${plot.y}: mean ${p4(p.mean)} · min ${p4(p.min)} · max ${p4(p.max)} · n=${n}` : `${plot.y}: ${p4(p.mean)}`];
-      if (plot.color) tip.push(tipLine(plot.color, gr.first.values[plot.color]));
+      // A colour group is titled by its colour value already.
+      if (plot.color && by) tip.push(tipLine(plot.color, gr.first.values[plot.color]));
       // A pixel-sized chart gets hover boxes from the host script; the scaled one falls back to <title>.
       const title = b.sized ? '' : `<title>${esc(tip.join('\n'))}</title>`;
       dots += `<circle class="dq-pt" cx="${f1(X(p.x))}" cy="${f1(Y(p.mean))}" r="${f1(3 * s).replace(/\.0$/, '')}" fill="${fill}"${traceAttr(traceOf(gr))} data-uuid="${esc(p.uuid)}"${key} data-tip="${esc(tip.join('\n'))}">${title}</circle>`;
@@ -326,11 +330,13 @@ export function barGroups(rows: Row[], plot: BarSpec, types: Record<string, Valu
 export function barSvg(rows: Row[], plot: BarSpec, types: Record<string, ValueType>, opts: ChartOpts = {}): Chart {
   const sc = scaleOf(opts);
   const groups = barGroups(rows, plot, types);
-  // Each category keeps a minimum width; past that the chart grows wider than its box and scrolls.
-  const b = box(opts.size, sc, opts.size ? groups.length * MIN_CAT_W * sc : 0);
-  const { L, T, PW, PH, s } = b;
   const hidden = new Set(opts.hidden ?? []);
   const shownYs = plot.ys.map((k, j) => ({ k, j })).filter(({ k }) => !hidden.has(k));
+  // Each category keeps a minimum width, more with each y series drawn side by side; past that
+  // the chart grows wider than its box and scrolls.
+  const catW = MIN_CAT_W + Math.max(0, shownYs.length - 1) * MIN_SERIES_W;
+  const b = box(opts.size, sc, opts.size ? groups.length * catW * sc : 0);
+  const { L, T, PW, PH, s } = b;
   const all = groups.flatMap((gr) => gr.stats.filter((s): s is NonNullable<typeof s> => s !== null));
   if (!all.length) return empty(`No rows have numeric ${plot.ys.join(', ')}.`);
   const visible = groups.flatMap((gr) => shownYs.map(({ j }) => gr.stats[j]).filter((s): s is NonNullable<typeof s> => !!s));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { joinMacroArgs, parseQuery, setSetting, toggleErr, type Cond, type Query } from '../../src/core/dsl';
+import { addY, joinMacroArgs, removeY, parseQuery, setSetting, toggleErr, type Cond, type Query } from '../../src/core/dsl';
 
 const ok = (t: string): Query => {
   const r = parseQuery(t);
@@ -117,5 +117,25 @@ describe('toggleErr', () => {
     expect(toggleErr('band', 'band')).toBe('off');
     expect(toggleErr('off', 'band')).toBe('band');
     expect(toggleErr('bar', 'band')).toBe('band');
+  });
+});
+
+describe('addY / removeY', () => {
+  it('appends a column to y:, adding the token after the default when there is none', () => {
+    expect(addY('#a y:p', 'q')).toBe('#a y:p,q');
+    expect(addY('#a', 'q', ['p'])).toBe('#a y:p,q');
+    expect(addY('#a', 'q')).toBe('#a y:q');
+  });
+  it('does not add a column twice', () => {
+    expect(addY('#a y:p,q', 'q')).toBe('#a y:p,q');
+    expect(addY('#a', 'p', ['p'])).toBe('#a');
+  });
+  it('removes a column; removing the last removes the token', () => {
+    expect(removeY('#a y:p,q,r sort:p', 'q')).toBe('#a y:p,r sort:p');
+    expect(removeY('#a y:p sort:p', 'p')).toBe('#a sort:p');
+    expect(removeY('#a y:p', 'zz')).toBe('#a y:p');
+  });
+  it('refuses a query with a mistake', () => {
+    expect(() => addY('gre<', 'q')).toThrow('Fix the query first');
   });
 });
