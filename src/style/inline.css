@@ -25,35 +25,47 @@
 .dq-sel { font: inherit; max-width: 9em; color: var(--dq-fg); background: var(--dq-code); border: 1px solid var(--dq-line); border-radius: 4px; padding: 1px 3px; }
 .dq-sb { font: inherit; min-width: 2.4em; color: var(--dq-fg); background: transparent; border: 1px solid var(--dq-line); border-radius: 4px; padding: 2px 6px; cursor: pointer; }
 .dq-sb:hover, .dq-sel:hover { border-color: var(--dq-accent); }
+.dq-sb[aria-pressed="true"] { background: var(--dq-accent); border-color: var(--dq-accent); color: #fff; }
 .dq-chartbox { position: relative; padding: 6px 8px 2px; border-bottom: 1px solid var(--dq-line); }
 .dq-chartbox .dq-legend { color: var(--dq-plot-fg); }
 /* Look copied from plotly's default template: blue-grey plot area, white grid, no axis box,
    "Open Sans" 12/14 px in #2a3f5f, 6 px markers, hover labels in the trace colour.
-   Logseq sets `svg { pointer-events: none }` globally; our charts take the pointer back. */
-.dq-chart { display: block; width: 100%; height: auto; font-family: "Open Sans", verdana, arial, sans-serif; pointer-events: auto; }
-.dq-chart text { font-size: 12px; fill: var(--dq-plot-fg); pointer-events: none; }
-.dq-chart .dq-title, .dq-chart .dq-cat { font-size: 14px; }
-.dq-chart .dq-lbl { font-size: 11px; }
+   Logseq sets `svg { pointer-events: none }` globally; our charts take the pointer back.
+   A chart drawn at pixel size keeps that size (a wide bar chart scrolls in .dq-plot); the
+   fallback without one scales to the box. --dq-s is the Ctrl+wheel scale of fonts and lines. */
+.dq-plot { overflow-x: auto; overflow-y: hidden; }
+.dq-chart { display: block; font-family: "Open Sans", verdana, arial, sans-serif; pointer-events: auto; max-width: none; }
+.dq-chart:not([width]) { width: 100%; height: auto; }
+.dq-chart text { font-size: calc(12px * var(--dq-s, 1)); fill: var(--dq-plot-fg); pointer-events: none; }
+.dq-chart .dq-title, .dq-chart .dq-cat { font-size: calc(14px * var(--dq-s, 1)); }
+.dq-chart .dq-lbl { font-size: calc(11px * var(--dq-s, 1)); }
 .dq-chart .dq-area { fill: var(--dq-plot-bg); }
 .dq-chart[data-dom] .dq-area { cursor: crosshair; }
-.dq-chart .dq-grid { stroke: var(--dq-plot-grid); stroke-width: 1; pointer-events: none; }
-.dq-chart .dq-zero { stroke: var(--dq-plot-grid); stroke-width: 2; pointer-events: none; }
-.dq-chart .dq-ref { stroke: var(--dq-c1); stroke-width: 1.5; stroke-dasharray: 6 4; pointer-events: none; }
+.dq-chart .dq-grid { stroke: var(--dq-plot-grid); stroke-width: calc(1px * var(--dq-s, 1)); pointer-events: none; }
+.dq-chart .dq-zero { stroke: var(--dq-plot-grid); stroke-width: calc(2px * var(--dq-s, 1)); pointer-events: none; }
+.dq-chart .dq-ref { stroke: var(--dq-c1); stroke-width: calc(1.5px * var(--dq-s, 1)); stroke-dasharray: 6 4; pointer-events: none; }
 .dq-chart .dq-passzone { fill: var(--dq-c2); fill-opacity: 0.12; pointer-events: none; }
 .dq-chart .dq-pt { cursor: pointer; }
-.dq-chart .dq-pt:hover { r: 5; stroke: var(--dq-plot-fg); stroke-width: 1; }
+.dq-chart .dq-pt:hover { r: calc(5px * var(--dq-s, 1)); stroke: var(--dq-plot-fg); stroke-width: calc(1px * var(--dq-s, 1)); }
 .dq-chart .dq-bar:hover { filter: brightness(1.1); }
 .dq-chart .dq-whisker { pointer-events: none; }
-.dq-chart .dq-whisker line { stroke: var(--dq-plot-fg); stroke-width: 1.3; }
-.dq-chart .dq-err { pointer-events: none; }
-.dq-chart .dq-err line { stroke: var(--dq-plot-fg); stroke-width: 1; stroke-opacity: 0.7; }
-.dq-chart .dq-band { stroke: none; pointer-events: none; }
-.dq-chart .dq-line { stroke-width: 1.5; pointer-events: none; }
+.dq-chart .dq-whisker line { stroke: var(--dq-plot-fg); stroke-width: calc(1.3px * var(--dq-s, 1)); }
+/* Bars, bands and lines of a trace take double-clicks (hide the trace); the clip box itself does not. */
 .dq-chart .dq-clip { overflow: hidden; pointer-events: none; }
+.dq-chart .dq-err line { stroke: var(--dq-plot-fg); stroke-width: calc(1px * var(--dq-s, 1)); stroke-opacity: 0.7; pointer-events: stroke; }
+.dq-chart .dq-band { stroke: none; pointer-events: fill; }
+.dq-chart .dq-line { stroke-width: calc(1.5px * var(--dq-s, 1)); pointer-events: stroke; }
+/* Plotly-style axis handles: an end of an axis stretches that end, the middle pans. */
+.dq-chart .dq-axdrag { fill: transparent; pointer-events: all; }
+.dq-chart .dq-axdrag[data-ax="x"] { cursor: ew-resize; }
+.dq-chart .dq-axdrag[data-ax="y"] { cursor: ns-resize; }
+.dq-chart .dq-axdrag[data-end="pan"] { cursor: move; }
 .dq-chart .dq-drag { fill: var(--dq-plot-fg); fill-opacity: 0.1; stroke: var(--dq-plot-fg); stroke-dasharray: 3 3; pointer-events: none; }
 .dq-tip { position: absolute; z-index: 2; pointer-events: none; white-space: pre; font: 13px/1.4 Arial, sans-serif; color: #fff; background: var(--dq-c0); border: 1px solid #fff; border-radius: 2px; padding: 3px 6px; }
 .dq-tip[hidden] { display: none; }
-.dq-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: 0.875em; color: var(--dq-muted); padding: 2px 0 6px; }
+.dq-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: calc(0.875em * var(--dq-s, 1)); color: var(--dq-muted); padding: 2px 0 6px; }
+.dq-legend .dq-trace { cursor: pointer; user-select: none; }
+.dq-legend .dq-off { opacity: 0.4; }
 .dq-mark { display: inline-block; width: 9px; height: 9px; margin-right: 5px; vertical-align: -1px; }
 .dq-dot { border-radius: 50%; }
 .dq-square { border-radius: 2px; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { joinMacroArgs, parseQuery, setSetting, type Cond, type Query } from '../../src/core/dsl';
+import { joinMacroArgs, parseQuery, setSetting, toggleErr, type Cond, type Query } from '../../src/core/dsl';
 
 const ok = (t: string): Query => {
   const r = parseQuery(t);
@@ -106,5 +106,16 @@ describe('setSetting (Review Focus 3)', () => {
     expect(setSetting('#a  seed==0 x:p', 'y', 'r')).toBe('#a  seed==0 x:p y:r');
     expect(setSetting('#a ', 'err', 'band')).toBe('#a err:band');
     expect(setSetting('', 'x', 'a')).toBe('x:a');
+  });
+});
+
+describe('toggleErr', () => {
+  it('± and ▤ are two exclusive on/off toggles', () => {
+    expect(toggleErr('bar', 'bar')).toBe('off');
+    expect(toggleErr('off', 'bar')).toBeNull();
+    expect(toggleErr('band', 'bar')).toBeNull();
+    expect(toggleErr('band', 'band')).toBe('off');
+    expect(toggleErr('off', 'band')).toBe('band');
+    expect(toggleErr('bar', 'band')).toBe('band');
   });
 });

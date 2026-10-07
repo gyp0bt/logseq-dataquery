@@ -2,7 +2,7 @@ import '@logseq/libs';
 import { joinMacroArgs, type Kind, type SettingName } from './core/dsl';
 import { buildMacro, LEGACY_TYPE, MACRO_KINDS } from './core/macroText';
 import { renderLegacy } from './core/view';
-import { errorText, jumpTo, readMacro, saveDsl, setSettingInMacro } from './host/actions';
+import { errorText, jumpTo, readMacro, saveDsl, setSettingInMacro, toggleErrInMacro } from './host/actions';
 import type { LogseqLike } from './host/api';
 import { Engine } from './host/engine';
 import { InlineViews } from './host/inline';
@@ -27,13 +27,24 @@ async function setDslFromView(uuid: string, next: string): Promise<void> {
   if (next !== dsl) await saveDsl(api, uuid, macro, kind, next);
 }
 
-/** `data-on-*` models receive `{ value, dataset }`; a button names its value, a select carries it. */
-interface SetEvent { value?: string; dataset: { macro?: string; name?: string; value?: string } }
+/**
+ * `data-on-*` models receive `{ value, dataset }`; a button names its value, a select carries it.
+ * An on/off button (`data-toggle`) names neither: its next value is read from the macro when pressed.
+ */
+interface SetEvent { value?: string; dataset: { macro?: string; name?: string; value?: string; toggle?: string } }
 
 function onSet(e: SetEvent): void {
-  const { macro, name } = e.dataset;
+  const { macro, name, toggle } = e.dataset;
   if (!macro || !name || !SETTING_NAMES.includes(name)) {
     report(new Error(`Data query: unexpected control '${name}'.`));
+    return;
+  }
+  if (toggle !== undefined) {
+    if (name !== 'err' || (toggle !== 'bar' && toggle !== 'band')) {
+      report(new Error(`Data query: unexpected toggle '${name}:${toggle}'.`));
+      return;
+    }
+    toggleErrInMacro(api, macro, toggle).catch(report);
     return;
   }
   const value = e.dataset.value ?? e.value ?? '';
@@ -59,13 +70,21 @@ async function main(): Promise<void> {
     logseq.provideUI({ key: `dataquery-${slot}`, slot, reset: true, template: html });
     interact?.attach(slot);
   };
-  const views: InlineViews = new InlineViews(engine, provide, (slot) => {
+  const slotEl = (slot: string): HTMLElement | null | undefined => {
     try {
-      return !!parent.document.getElementById(slot);
+      return parent.document.getElementById(slot);
     } catch (e) {
       console.warn('[dataquery] cannot inspect the Logseq window; keeping the view', e);
-      return true;
+      return undefined;
     }
+  };
+  const views: InlineViews = new InlineViews(engine, provide, (slot) => slotEl(slot) !== null, {
+    readDsl: async (uuid) => (await readMacro(api, uuid)).dsl,
+    chartOpts: (uuid) => interact?.optsFor(uuid),
+    painted: (slot) => {
+      const el = slotEl(slot);
+      return el === undefined || !!el?.querySelector('.dq');
+    },
   });
 
   try {

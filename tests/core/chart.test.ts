@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barGroups, barSvg, colorFor, commonPrefix, formatTick, niceTicks, scatterSvg } from '../../src/core/chart';
+import { barGroups, barSvg, colorFor, commonPrefix, dragAxis, formatTick, legendHtml, niceTicks, scatterSvg } from '../../src/core/chart';
 import type { Row } from '../../src/core/rows';
 
 const row = (id: string, values: Record<string, string>): Row => ({
@@ -57,9 +57,9 @@ describe('scatterSvg', () => {
   it('labels drop the common prefix; legend lists colours and the ratio line', () => {
     expect(c.html).toContain('>a</text>');
     expect(c.legend).toEqual([
-      { label: 'seed = 0', color: 'var(--dq-c0)', shape: 'dot' },
-      { label: 'seed = 1', color: 'var(--dq-c1)', shape: 'dot' },
-      { label: 'seed = 2', color: 'var(--dq-c2)', shape: 'dot' },
+      { label: 'seed = 0', color: 'var(--dq-c0)', shape: 'dot', trace: 'seed = 0', off: false },
+      { label: 'seed = 1', color: 'var(--dq-c1)', shape: 'dot', trace: 'seed = 1', off: false },
+      { label: 'seed = 2', color: 'var(--dq-c2)', shape: 'dot', trace: 'seed = 2', off: false },
       { label: 'ratio 1.00', color: 'var(--dq-fail)', shape: 'dash' },
       { label: "labels omit 'fsz-'", color: '', shape: 'none' },
     ]);
@@ -132,7 +132,7 @@ describe('several values in one row', () => {
   });
   it('err:band draws, per colour, a band through upper then lower bounds and a line through means in x order', () => {
     const html = draw('band', 's');
-    const bands = [...html.matchAll(/<path class="dq-band" d="([^"]+)" fill="([^"]+)" fill-opacity="0.2"\/>/g)];
+    const bands = [...html.matchAll(/<path class="dq-band" d="([^"]+)" fill="([^"]+)" fill-opacity="0.2"[^>]*\/>/g)];
     expect(bands).toHaveLength(2);
     const a = nums(bands[0][1]);
     const xs = a.filter((_, i) => i % 2 === 0);
@@ -152,5 +152,95 @@ describe('several values in one row', () => {
   it('bar charts reduce each row to its mean first', () => {
     const g = barGroups([row('a', { c: 'k', v: '1/3' }), row('b', { c: 'k', v: '4' })], { x: 'c', ys: ['v'] }, { c: 'string', v: 'numlist' });
     expect(g[0].stats[0]).toEqual({ mean: 3, min: 2, max: 4, n: 2 });
+  });
+});
+
+describe('scatter with by:', () => {
+  const merged = [row('blk1', { run: 'r1', x: '1', y: '2' }), row('blk2', { run: 'r2', x: '2', y: '3' })];
+  const mt = { run: 'string', x: 'number', y: 'number', seed: 'category' } as const;
+  it('hover title is the by value and points are coloured by it', () => {
+    const c = scatterSvg(merged, { x: 'x', y: 'y', labels: false, err: 'bar' }, mt, 'run');
+    expect(c.html).toContain('data-tip="r1\nx: 1\ny: 2"');
+    expect(c.legend.map((l) => l.label)).toEqual(['run = r1', 'run = r2']);
+    expect(c.html).toContain('fill="var(--dq-c1)"');
+  });
+  it('an explicit color: wins over by', () => {
+    const c = scatterSvg([row('a', { run: 'r1', x: '1', y: '2', seed: '0' })], { x: 'x', y: 'y', color: 'seed', labels: false, err: 'bar' }, mt, 'run');
+    expect(c.legend[0].label).toBe('seed = 0');
+  });
+});
+
+describe('hidden traces', () => {
+  const plot = { x: 'x', y: 'y', color: 'seed', labels: false, err: 'bar' } as const;
+  it('are not drawn, leave the autoscale and stay in the legend, greyed', () => {
+    const all = scatterSvg(rows, plot, types, undefined, { size: { w: 800, h: 360 } });
+    const some = scatterSvg(rows, plot, types, undefined, { size: { w: 800, h: 360 }, hidden: ['seed = 1'] });
+    expect(all.html).toContain('data-trace="seed = 1"');
+    expect(some.html).not.toMatch(/<circle[^>]*data-trace="seed = 1"/);
+    expect(some.html.match(/<circle /g)).toHaveLength(3);
+    // fsz-c (y 1.96) was the highest point; without it the y range shrinks.
+    const top = (h: string) => Number(/data-dom="[^,]+,[^,]+,[^,]+,([^"]+)"/.exec(h)![1]);
+    expect(top(some.html)).toBeLessThan(top(all.html));
+    expect(some.legend.find((l) => l.label === 'seed = 1')!.off).toBe(true);
+    const lg = legendHtml(some.legend);
+    expect(lg).toContain('<span class="dq-trace dq-off" data-trace="seed = 1">');
+    expect(lg).toContain('<span class="dq-trace" data-trace="seed = 0">');
+  });
+  it('bar series can be hidden too', () => {
+    const c = barSvg(rows, { x: 'combine', ys: ['x', 'y'] }, types, { hidden: ['x'] });
+    expect(c.html).not.toContain('data-trace="x"');
+    expect(c.html).toContain('data-trace="y"');
+    expect(c.legend[0]).toMatchObject({ label: 'x', trace: 'x', off: true });
+  });
+});
+
+describe('font and marker scale', () => {
+  it('scales markers, margins and fonts', () => {
+    const one = scatterSvg(rows, { x: 'x', y: 'y', labels: false, err: 'bar' }, types, undefined, { size: { w: 800, h: 360 } });
+    const two = scatterSvg(rows, { x: 'x', y: 'y', labels: false, err: 'bar' }, types, undefined, { size: { w: 800, h: 360 }, scale: 2 });
+    expect(one.html).toContain('r="3"');
+    expect(one.html).not.toContain('--dq-s');
+    expect(two.html).toContain('r="6"');
+    expect(two.html).toContain('style="--dq-s:2"');
+    expect(two.html).toMatch(/data-box="128,/);
+    expect(legendHtml(two.legend, 2)).toContain('--dq-s:2');
+  });
+});
+
+describe('axis drag', () => {
+  const a = { L: 0, T: 0, PW: 100, PH: 100 };
+  const d = { x0: 0, x1: 10, y0: 0, y1: 10 };
+  it('scatter draws hit strips on both axes: two ends and a middle', () => {
+    const h = scatterSvg(rows, { x: 'x', y: 'y', labels: false, err: 'bar' }, types, undefined, { size: { w: 800, h: 360 } }).html;
+    for (const ax of ['x', 'y']) for (const end of ['0', '1', 'pan']) expect(h).toContain(`class="dq-axdrag" data-ax="${ax}" data-end="${end}"`);
+  });
+  it('the middle pans, an end moves only that end and keeps the grabbed value under the pointer', () => {
+    expect(dragAxis(d, a, 'x', 'pan', { x: 50, y: 0 }, { x: 60, y: 0 })).toEqual({ x0: -1, x1: 9, y0: 0, y1: 10 });
+    expect(dragAxis(d, a, 'y', 'pan', { x: 0, y: 50 }, { x: 0, y: 60 })).toEqual({ x0: 0, x1: 10, y0: 1, y1: 11 });
+    // Grab x=8 at 80 px and pull it to 40 px: x1 becomes 20, x0 stays.
+    expect(dragAxis(d, a, 'x', '1', { x: 80, y: 0 }, { x: 40, y: 0 })).toEqual({ x0: 0, x1: 20, y0: 0, y1: 10 });
+    // Grab x=2 at 20 px and pull it to 60 px: 2 stays under the pointer, x1 fixed.
+    const left = dragAxis(d, a, 'x', '0', { x: 20, y: 0 }, { x: 60, y: 0 });
+    expect(left.x1).toBe(10);
+    expect(left.x0 + 0.6 * (left.x1 - left.x0)).toBeCloseTo(2, 10);
+    // Top end of y: grab y=8 (20 px from the top), pull it down to 60 px from the top.
+    const top = dragAxis(d, a, 'y', '1', { x: 0, y: 20 }, { x: 0, y: 60 });
+    expect(top.y0).toBe(0);
+    expect(top.y1).toBeCloseTo(20, 10);
+    const bottom = dragAxis(d, a, 'y', '0', { x: 0, y: 80 }, { x: 0, y: 40 });
+    expect(bottom.y1).toBe(10);
+    expect(bottom.y0 + 0.6 * (bottom.y1 - bottom.y0)).toBeCloseTo(2, 10);
+  });
+});
+
+describe('bar with many categories', () => {
+  it('gives each category a minimum width and records the requested width', () => {
+    const many = Array.from({ length: 30 }, (_, i) => row(`r${i}`, { c: `cat-${i}`, v: String(i) }));
+    const h = barSvg(many, { x: 'c', ys: ['v'] }, { c: 'string', v: 'number' }, { size: { w: 600, h: 360 } }).html;
+    const w = Number(/ width="(\d+)"/.exec(h)![1]);
+    expect(w).toBeGreaterThanOrEqual(30 * 56 + 64);
+    expect(h).toContain('data-w="600"');
+    const few = barSvg(many.slice(0, 3), { x: 'c', ys: ['v'] }, { c: 'string', v: 'number' }, { size: { w: 600, h: 360 } }).html;
+    expect(few).toContain('width="600"');
   });
 });

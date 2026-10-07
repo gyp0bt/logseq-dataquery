@@ -70,7 +70,7 @@ describe('renderInline', () => {
     expect(head('sort:-gre', 'note')!.slice(1)).toEqual(['note', undefined]);
   });
 
-  it('scatter side: X, Y and colour selects, ± cycling bar → band → off, reset, enlarge, CSV', () => {
+  it('scatter side: X, Y and colour selects, ± and ▤ toggles, reset, enlarge, CSV', () => {
     const html = real('scatter', '');
     const sel = (name: string) => new RegExp(`<select class="dq-sel" data-on-change="dqSet" data-macro="m" data-name="${name}"[^>]*>(.*?)</select>`).exec(html)![1];
     expect(sel('x')).toBe('<option value="gre" selected>gre</option><option value="thick">thick</option>');
@@ -78,19 +78,29 @@ describe('renderInline', () => {
     expect(sel('color')).toContain('<option value="" selected>none</option>');
     expect(sel('color')).toContain('<option value="seed">seed</option>');
     expect(real('scatter', 'color:seed')).toContain('<option value="seed" selected>seed</option>');
-    const err = (dsl: string) => /data-name="err" data-value="([^"]*)"/.exec(real('scatter', dsl))![1];
-    expect(err('')).toBe('band');
-    expect(err('err:band')).toBe('off');
-    expect(err('err:off')).toBe('');
+    // The next value is worked out from the macro text when clicked, not baked in here.
+    const pressed = (dsl: string, t: string) => new RegExp(`data-name="err" data-toggle="${t}" aria-pressed="(true|false)"`).exec(real('scatter', dsl))![1];
+    expect([pressed('', 'bar'), pressed('', 'band')]).toEqual(['true', 'false']);
+    expect([pressed('err:band', 'bar'), pressed('err:band', 'band')]).toEqual(['false', 'true']);
+    expect([pressed('err:off', 'bar'), pressed('err:off', 'band')]).toEqual(['false', 'false']);
+    expect(html).not.toContain('data-name="err" data-value');
     for (const a of ['reset', 'expand', 'csv']) expect(html).toContain(`data-act="${a}"`);
     expect(html).toContain('<div class="dq-chartbox" data-on-click="dqNoop" data-macro="m">');
     expect(html).not.toContain('dq-modebar');
   });
 
-  it('bar side: X from category/string columns, Y from numeric ones, enlarge, CSV', () => {
+  it('draws the first paint at the size it is given', () => {
+    const p = parseQuery('');
+    if (!p.ok) throw new Error('bad');
+    const res = runQuery(p.query, 'scatter', { blocks, types: TYPES, macroUuid: 'm' });
+    const html = renderInline({ kind: 'scatter', macroUuid: 'm', dsl: '', parsed: p, result: res, chartOpts: { size: { w: 700, h: 360 } } });
+    expect(html).toContain('width="700" height="360"');
+  });
+
+  it('bar side: X from every column, Y from numeric ones, enlarge, CSV', () => {
     const html = real('bar', '');
     const sel = (name: string) => new RegExp(`data-name="${name}"[^>]*>(.*?)</select>`).exec(html)![1];
-    expect(sel('x')).toBe('<option value="run" selected>run</option><option value="seed">seed</option>');
+    expect(sel('x')).toBe('<option value="run" selected>run</option><option value="gre">gre</option><option value="thick">thick</option><option value="seed">seed</option>');
     expect(sel('y')).toBe('<option value="gre" selected>gre</option><option value="thick">thick</option>');
     expect(html).toContain('data-act="expand"');
     expect(html).toContain('data-act="csv"');

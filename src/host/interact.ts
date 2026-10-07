@@ -1,4 +1,4 @@
-import type { Domain } from '../core/chart';
+import { dragAxis, legendHtml, type ChartOpts, type Domain } from '../core/chart';
 import { parseQuery } from '../core/dsl';
 import { chartOf, errorHtml, toCsv, type ViewData } from '../core/view';
 
@@ -12,10 +12,18 @@ export interface InteractDeps {
   notify(msg: string): void;
 }
 
-interface ChartState { view?: Domain; big: boolean }
+/**
+ * What a chart shows besides the macro: zoom, enlarged, Ctrl+wheel scale and traces hidden by a
+ * double-click. Kept per macro block, so it survives Logseq re-rendering the same view; `w` is the
+ * last drawn width, so a re-render can paint at the right size straight away.
+ */
+interface ChartState { view?: Domain; big: boolean; scale: number; hidden: Set<string>; w?: number }
 
 const HEIGHT = 360;
 const MIN_DRAG = 6;
+const SCALE_STEP = 1.1;
+const clampScale = (s: number) => Math.min(3, Math.max(0.5, Math.round(s * 1000) / 1000));
+type AxisEnd = '0' | '1' | 'pan';
 
 /**
  * Behaviour Logseq's `data-on-*` delegation cannot give: it forwards no key names and no pointer
@@ -26,7 +34,8 @@ export class Interact {
   private state = new Map<string, ChartState>();
   private observers = new WeakMap<Element, ResizeObserver>();
   private drag?: { box: HTMLElement; svg: SVGSVGElement; x: number; y: number; rect: SVGRectElement };
-  private pan?: { el: HTMLElement; x: number; y: number };
+  private pan?: { el: HTMLElement; x: number };
+  private axDrag?: { box: HTMLElement; ax: 'x' | 'y'; end: AxisEnd; d: Domain; a: NonNullable<ReturnType<typeof areaOf>>; from: { x: number; y: number }; cx: number; cy: number };
 
   constructor(private doc: Document, private deps: InteractDeps) {}
 
@@ -55,8 +64,12 @@ export class Interact {
     };
     const bound = on.map(([t, f, cap]) => [t, guard(f), cap] as const);
     for (const [t, f, cap] of bound) this.doc.addEventListener(t, f, cap);
+    // Ctrl + wheel must cancel the browser/Logseq zoom, which a passive listener cannot do.
+    const wheel = guard((e) => this.onWheel(e as WheelEvent));
+    this.doc.addEventListener('wheel', wheel, { passive: false });
     return () => {
       for (const [t, f, cap] of bound) this.doc.removeEventListener(t, f, cap);
+      this.doc.removeEventListener('wheel', wheel);
     };
   }
 
@@ -71,7 +84,10 @@ export class Interact {
       box.dataset.live = '1';
       const st = this.stateOf(box);
       box.classList.toggle('dq-big', st.big);
-      this.draw(box);
+      // The view was painted at its last size and state already; redraw only if the width moved.
+      const plotEl = box.querySelector<HTMLElement>('.dq-plot');
+      const drawnW = plotEl?.querySelector('svg.dq-chart')?.getAttribute('data-w');
+      if (!plotEl || drawnW === null || drawnW === undefined || Number(drawnW) !== plotEl.clientWidth) this.draw(box);
       const RO = this.doc.defaultView?.ResizeObserver;
       if (RO && !this.observers.has(box)) {
         let lastW = box.clientWidth;
@@ -90,8 +106,20 @@ export class Interact {
 
   private stateOf(box: HTMLElement): ChartState {
     const uuid = box.dataset.macro!;
-    if (!this.state.has(uuid)) this.state.set(uuid, { big: false });
+    if (!this.state.has(uuid)) this.state.set(uuid, { big: false, scale: 1, hidden: new Set() });
     return this.state.get(uuid)!;
+  }
+
+  private optsOf(st: ChartState, w: number): ChartOpts {
+    const winH = this.doc.defaultView?.innerHeight ?? 800;
+    const h = st.big ? Math.max(HEIGHT, Math.round(winH * 0.7)) : HEIGHT;
+    return { size: { w, h }, view: st.view, scale: st.scale, hidden: [...st.hidden] };
+  }
+
+  /** How to paint the chart of `uuid` on a re-render: its last width and transient state. */
+  optsFor(uuid: string): ChartOpts | undefined {
+    const st = this.state.get(uuid);
+    return st?.w ? this.optsOf(st, st.w) : undefined;
   }
 
   draw(box: HTMLElement): void {
@@ -100,10 +128,16 @@ export class Interact {
     const w = plotEl?.clientWidth ?? 0;
     if (!data || !plotEl || w <= 0) return;
     const st = this.stateOf(box);
-    const winH = this.doc.defaultView?.innerHeight ?? 800;
-    const size = { w, h: st.big ? Math.max(HEIGHT, Math.round(winH * 0.7)) : HEIGHT };
-    const chart = chartOf(data, { size, view: st.view });
-    if (chart) plotEl.innerHTML = chart.html;
+    st.w = w;
+    const chart = chartOf(data, this.optsOf(st, w));
+    if (!chart) return;
+    // Keep the horizontal scroll of a wide bar chart across redraws.
+    const left = plotEl.scrollLeft;
+    plotEl.innerHTML = chart.html;
+    plotEl.scrollLeft = left;
+    // The legend shows hidden traces greyed and follows the scale, so it is redrawn too.
+    box.querySelector('.dq-legend')?.remove();
+    plotEl.insertAdjacentHTML('afterend', legendHtml(chart.legend, st.scale));
   }
 
   // ---- query field ----
@@ -168,7 +202,10 @@ export class Interact {
     if (act === 'expand') {
       st.big = !st.big;
       box.classList.toggle('dq-big', st.big);
-    } else if (act === 'reset') st.view = undefined;
+    } else if (act === 'reset') {
+      st.view = undefined;
+      st.hidden.clear();
+    }
     this.draw(box);
   }
 
@@ -183,10 +220,28 @@ export class Interact {
     clip.writeText(toCsv(data.result, data.query.by)).then(() => this.deps.notify(`${n} rows copied`), fail);
   }
 
+  /** On a trace (legend entry, marker, line, band) it hides or shows that trace; elsewhere on the plot it resets the zoom. */
   private onDblClick(e: MouseEvent): void {
-    const box = (e.target as Element | null)?.closest?.('.dq-plot')?.closest<HTMLElement>('.dq-chartbox');
+    const t = e.target as Element | null;
+    const box = t?.closest?.('.dq-chartbox') as HTMLElement | null;
     if (!box) return;
-    this.stateOf(box).view = undefined;
+    const trace = (t!.closest('[data-trace]') as HTMLElement | SVGElement | null)?.dataset.trace;
+    const st = this.stateOf(box);
+    if (trace !== undefined) {
+      if (!st.hidden.delete(trace)) st.hidden.add(trace);
+    } else if (t!.closest('.dq-plot')) st.view = undefined;
+    else return;
+    this.draw(box);
+  }
+
+  /** Ctrl + wheel over a chart scales markers, lines and fonts; a plain wheel scrolls the page as usual. */
+  private onWheel(e: WheelEvent): void {
+    if (!e.ctrlKey || !e.deltaY) return;
+    const box = (e.target as Element | null)?.closest?.('.dq-chartbox') as HTMLElement | null;
+    if (!box) return;
+    e.preventDefault();
+    const st = this.stateOf(box);
+    st.scale = clampScale(st.scale * (e.deltaY < 0 ? SCALE_STEP : 1 / SCALE_STEP));
     this.draw(box);
   }
 
@@ -223,7 +278,7 @@ export class Interact {
     if (!el) return false;
     e.preventDefault();
     el.style.cursor = 'grabbing';
-    this.pan = { el, x: e.clientX, y: e.clientY };
+    this.pan = { el, x: e.clientX };
     return true;
   }
 
@@ -234,10 +289,26 @@ export class Interact {
 
   // ---- drag zoom ----
 
+  private startAxisDrag(e: PointerEvent): boolean {
+    const hit = (e.target as Element | null)?.closest?.('.dq-axdrag') as SVGElement | null;
+    const svg = hit?.closest('svg.dq-chart') as SVGSVGElement | null;
+    const box = svg?.closest<HTMLElement>('.dq-chartbox');
+    if (!hit || !svg || !box || e.button !== 0) return false;
+    const d = currentDomain(box);
+    const a = areaOf(svg);
+    if (!d || !a) return false;
+    e.preventDefault();
+    const ax = hit.dataset.ax === 'y' ? 'y' : 'x';
+    const end = (['0', '1', 'pan'] as const).find((x) => x === hit.dataset.end) ?? 'pan';
+    this.axDrag = { box, ax, end, d, a, from: local(svg, e), cx: e.clientX, cy: e.clientY };
+    return true;
+  }
+
   private onDown(e: PointerEvent): void {
-    if (this.startPan(e)) return;
-    const area = (e.target as Element | null)?.closest?.('.dq-area');
-    const svg = area?.closest('svg') as SVGSVGElement | null;
+    if (this.startPan(e) || this.startAxisDrag(e)) return;
+    // Bands and lines lie over the plot area (they take double-clicks); a drag may start on them too.
+    const area = (e.target as Element | null)?.closest?.('.dq-area, .dq-band, .dq-line, .dq-err');
+    const svg = area?.closest('svg.dq-chart') as SVGSVGElement | null;
     const box = svg?.closest<HTMLElement>('.dq-chartbox');
     // Only scatter plots record a domain to zoom into.
     if (!area || !svg || !box || e.button !== 0 || !svg.hasAttribute('data-dom')) return;
@@ -253,10 +324,17 @@ export class Interact {
     if (this.pan) {
       // The button was released outside the window: stop following the pointer.
       if (!(e.buttons & 4)) return this.endPan();
-      const { el, x, y } = this.pan;
-      el.scrollLeft -= e.clientX - x;
-      el.scrollTop -= e.clientY - y;
-      this.pan = { el, x: e.clientX, y: e.clientY };
+      // Sideways only, and the table moves against the pointer (like dragging a scrollbar thumb).
+      const { el, x } = this.pan;
+      el.scrollLeft += e.clientX - x;
+      this.pan = { el, x: e.clientX };
+      return;
+    }
+    if (this.axDrag) {
+      const { box, ax, end, d, a, from, cx, cy } = this.axDrag;
+      const to = { x: from.x + e.clientX - cx, y: from.y + e.clientY - cy };
+      this.stateOf(box).view = dragAxis(d, a, ax, end, from, to);
+      this.draw(box);
       return;
     }
     if (!this.drag) return;
@@ -270,6 +348,10 @@ export class Interact {
 
   private onUp(e: PointerEvent): void {
     if (this.pan) return this.endPan();
+    if (this.axDrag) {
+      this.axDrag = undefined;
+      return;
+    }
     if (!this.drag) return;
     const { box, svg, x, y, rect } = this.drag;
     this.drag = undefined;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { errorText, jumpTo, readMacro, saveDsl, setSettingInMacro } from '../../src/host/actions';
+import { errorText, jumpTo, readMacro, saveDsl, setSettingInMacro, toggleErrInMacro } from '../../src/host/actions';
 import { fetchOrder, fetchTypeOverrides, toSourceBlock } from '../../src/host/collect';
 import { Engine } from '../../src/host/engine';
 import { InlineViews } from '../../src/host/inline';
@@ -97,6 +97,26 @@ describe('actions', () => {
     await setSettingInMacro(api, 'm', 'color', null);
     expect(api.Editor.updateBlock).not.toHaveBeenCalled();
   });
+  it('± and ▤ read the macro when pressed, so every press switches (no value baked into the button)', async () => {
+    const api = graph();
+    const text = async () => (await readMacro(api, 'm')).dsl;
+    await toggleErrInMacro(api, 'm', 'bar');
+    expect(await text()).toBe('#work/nsb  sort:gre err:off');
+    await toggleErrInMacro(api, 'm', 'bar');
+    expect(await text()).toBe('#work/nsb  sort:gre');
+    await toggleErrInMacro(api, 'm', 'band');
+    expect(await text()).toBe('#work/nsb  sort:gre err:band');
+    await toggleErrInMacro(api, 'm', 'bar');
+    expect(await text()).toBe('#work/nsb  sort:gre');
+    await toggleErrInMacro(api, 'm', 'band');
+    await toggleErrInMacro(api, 'm', 'band');
+    expect(await text()).toBe('#work/nsb  sort:gre err:off');
+  });
+  it('a toggle on a query with a mistake says so instead of guessing', async () => {
+    const api = graph();
+    await api.Editor.updateBlock('m', '{{renderer :DQscatter, gre<}}');
+    await expect(toggleErrInMacro(api, 'm', 'bar')).rejects.toThrow('Fix the query first');
+  });
   it('readMacro says so when the macro is gone', async () => {
     await expect(readMacro(graph(), 'a')).rejects.toThrow('no longer contains a DQtable, DQscatter or DQbar macro');
   });
@@ -108,14 +128,20 @@ describe('actions', () => {
 });
 
 describe('InlineViews', () => {
-  it('renders into the slot, re-renders on refresh, forgets vanished slots', async () => {
+  it('renders into the slot, re-renders on refresh only when the view changed, forgets vanished slots', async () => {
     const provide = vi.fn();
     const alive = new Set(['s1']);
-    const views = new InlineViews(new Engine(graph(), () => 'dataquery/types'), provide, (s) => alive.has(s));
+    const api = graph();
+    const engine = new Engine(api, () => 'dataquery/types');
+    const views = new InlineViews(engine, provide, (s) => alive.has(s));
     await views.show('s1', 'm', 'table', '#work/nsb sort:gre');
     expect(provide).toHaveBeenLastCalledWith('s1', expect.stringContaining('3 rows'));
     expect(views.view('m')!.result.rows).toHaveLength(3);
     provide.mockClear();
+    await views.refreshAll();
+    expect(provide).not.toHaveBeenCalled();
+    await api.Editor.updateBlock('a', 'A\nrun:: a\ngre:: 2.5');
+    engine.invalidate();
     await views.refreshAll();
     expect(provide).toHaveBeenCalledTimes(1);
     alive.delete('s1');
@@ -139,6 +165,47 @@ describe('InlineViews', () => {
     await first;
     expect(provide).toHaveBeenCalledTimes(1);
     expect(provide.mock.calls[0][1]).toContain('3 rows');
+  });
+  it('one setting change leads to one repaint, though Logseq both re-slots the macro and reports a DB change (flicker)', async () => {
+    const api = graph();
+    const provide = vi.fn();
+    const engine = new Engine(api, () => 'dataquery/types');
+    const views = new InlineViews(engine, provide, () => true, { readDsl: async (u) => (await readMacro(api, u)).dsl });
+    await views.show('s1', 'm', 'table', '#work/nsb  sort:gre');
+    provide.mockClear();
+    // A side button: the macro is rewritten; Logseq re-renders the block (onMacroRendererSlotted)
+    // and, 300 ms later, DB.onChanged refreshes every view.
+    await setSettingInMacro(api, 'm', 'sort', '-gre');
+    await views.show('s1', 'm', 'table', (await readMacro(api, 'm')).dsl);
+    engine.invalidate();
+    await views.refreshAll();
+    expect(provide).toHaveBeenCalledTimes(1);
+    expect(provide.mock.calls[0][1]).toContain('sort:-gre');
+  });
+  it('a refresh re-reads the macro text, so a stale slot query does not stick', async () => {
+    const api = graph();
+    const provide = vi.fn();
+    const views = new InlineViews(new Engine(api, () => 'dataquery/types'), provide, () => true, { readDsl: async (u) => (await readMacro(api, u)).dsl });
+    await views.show('s1', 'm', 'table', '#work/nsb  sort:gre');
+    await api.Editor.updateBlock('m', '{{renderer :DQtable, #work/nsb sort:-gre}}');
+    await views.refreshAll();
+    expect(provide).toHaveBeenCalledTimes(2);
+    expect(provide.mock.calls[1][1]).toContain('value="#work/nsb sort:-gre"');
+  });
+  it('a repaint of an emptied slot is not skipped; charts start at the known size', async () => {
+    const api = graph();
+    await api.Editor.updateBlock('m', '{{renderer :DQscatter, #work/nsb}}');
+    const provide = vi.fn();
+    let painted = true;
+    const views = new InlineViews(new Engine(api, () => 'dataquery/types'), provide, () => true, {
+      painted: () => painted,
+      chartOpts: () => ({ size: { w: 777, h: 360 } }),
+    });
+    await views.show('s1', 'm', 'scatter', 'x:gre y:gre');
+    expect(provide.mock.calls[0][1]).toContain('width="777"');
+    painted = false;
+    await views.refreshAll();
+    expect(provide).toHaveBeenCalledTimes(2);
   });
   it('shows failures inside the view instead of throwing', async () => {
     const api = graph();

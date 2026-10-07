@@ -1,5 +1,5 @@
 import { barSvg, legendHtml, scatterSvg, type Chart, type ChartOpts } from './chart';
-import type { ErrMode, Kind, ParseResult, Query } from './dsl';
+import type { Kind, ParseResult, Query } from './dsl';
 import { esc } from './html';
 import { isAxisNumeric, typeOf, type QueryResult } from './query';
 import { rowLabel, type Row } from './rows';
@@ -12,6 +12,8 @@ export interface InlineInput {
   parsed: ParseResult;
   result?: QueryResult;
   error?: string;
+  /** Size and transient state to draw the chart at on first paint, so the host need not redraw it. */
+  chartOpts?: ChartOpts;
 }
 
 /** Everything a view needs to draw its chart again or copy its table. */
@@ -86,7 +88,9 @@ export function errorHtml(dsl: string, message: string, col: number): string {
 const dslInput = (uuid: string, dsl: string, bad: boolean) =>
   `<input class="dq-dsl${bad ? ' dq-bad' : ''}" type="text" spellcheck="false" value="${esc(dsl)}" placeholder="#tag key==value x:column — Enter to apply" data-on-click="dqNoop" data-macro="${esc(uuid)}">`;
 
-const NEXT_ERR: Record<ErrMode, string> = { bar: 'band', band: 'off', off: '' };
+/** On/off button over `err:`; the host works out the next value from the macro text when clicked. */
+const errToggle = (uuid: string, mode: 'bar' | 'band', on: boolean, icon: string, what: string) =>
+  `<button class="dq-sb dq-tg" data-on-click="dqSet" data-macro="${esc(uuid)}" data-name="err" data-toggle="${mode}" aria-pressed="${on}" title="${what}: ${on ? 'on' : 'off'}" aria-label="${what}">${icon}</button>`;
 
 function select(uuid: string, name: string, label: string, options: string[], current: string | undefined, none?: string): string {
   const opts = options.map((k) => [k, k]);
@@ -107,16 +111,15 @@ function sideHtml(inp: InlineInput, q: Query, res: QueryResult): string {
   let html = '';
   if (inp.kind === 'scatter') {
     const numeric = res.cols.filter((k) => isAxisNumeric(typeOf(res.types, k)));
-    const next = NEXT_ERR[q.err];
     html += select(uuid, 'x', 'X', numeric, res.axes.x);
     html += select(uuid, 'y', 'Y', numeric, res.axes.ys[0]);
     html += select(uuid, 'color', 'Color', res.cols, res.axes.color, 'none');
-    html += `<button class="dq-sb" data-on-click="dqSet" data-macro="${esc(uuid)}" data-name="err" data-value="${next}" title="Min–max: ${q.err} (click for ${next || 'bar'})" aria-label="Min–max: ${q.err}">±</button>`;
+    html += errToggle(uuid, 'bar', q.err === 'bar', '±', 'Min–max error bars');
+    html += errToggle(uuid, 'band', q.err === 'band', '▤', 'Min–max band');
     html += button('reset', '⟲', 'Reset axes (or double-click the plot)') + button('expand', '⤢', 'Enlarge') + csv;
   } else if (inp.kind === 'bar') {
-    const cats = res.cols.filter((k) => ['category', 'string'].includes(typeOf(res.types, k)));
     const numeric = res.cols.filter((k) => isAxisNumeric(typeOf(res.types, k)));
-    html += select(uuid, 'x', 'X', cats, res.axes.x);
+    html += select(uuid, 'x', 'X', res.cols, res.axes.x);
     html += select(uuid, 'y', 'Y', numeric, res.axes.ys.join(',') || undefined);
     html += button('expand', '⤢', 'Enlarge') + csv;
   } else html += csv;
@@ -149,8 +152,8 @@ export function renderInline(inp: InlineInput): string {
   const meta = `<span class="dq-meta">${res.rows.length} rows${nConflicts ? ` · <span class="dq-warn">⚠ ${nConflicts}</span>` : ''}</span>`;
   let chart = '';
   if (inp.kind !== 'table') {
-    const c = chartOf({ kind: inp.kind, query: q, result: res });
-    const inner = c ? `<div class="dq-plot">${c.html}</div>${legendHtml(c.legend)}` : `<p class="dq-empty">${CHART_HINT[inp.kind]}</p>`;
+    const c = chartOf({ kind: inp.kind, query: q, result: res }, inp.chartOpts);
+    const inner = c ? `<div class="dq-plot">${c.html}</div>${legendHtml(c.legend, inp.chartOpts?.scale)}` : `<p class="dq-empty">${CHART_HINT[inp.kind]}</p>`;
     chart = `<div class="dq-chartbox" data-on-click="dqNoop" data-macro="${uuid}">${inner}<div class="dq-tip" hidden></div></div>`;
   }
   const notes = res.warnings.map((w) => `<p class="dq-note">${esc(w)}</p>`).join('');

@@ -232,6 +232,15 @@ export function setSetting(text: string, name: SettingName, value: string | null
   return out;
 }
 
+/**
+ * The `±` (error bars) and `▤` (band) buttons are two exclusive on/off toggles over `err:`.
+ * Returns the new `err:` value, or null to remove the setting (bars, the default).
+ */
+export function toggleErr(current: ErrMode, button: 'bar' | 'band'): string | null {
+  if (button === 'bar') return current === 'bar' ? 'off' : null;
+  return current === 'band' ? 'off' : 'band';
+}
+
 /** Logseq hands renderer arguments split on commas; put them back together. */
 export function joinMacroArgs(args: string[]): string {
   return args.map((a) => a.trim()).join(', ');

@@ -1,4 +1,4 @@
-import { setSetting, type Kind, type SettingName } from '../core/dsl';
+import { parseQuery, setSetting, toggleErr, type Kind, type SettingName } from '../core/dsl';
 import { buildMacro, findMacro, replaceMacro } from '../core/macroText';
 import type { LogseqLike } from './api';
 
@@ -46,6 +46,18 @@ export async function saveDsl(api: LogseqLike, macroUuid: string, oldMacro: stri
 export async function setSettingInMacro(api: LogseqLike, macroUuid: string, name: SettingName, value: string | null): Promise<void> {
   const { macro, kind, dsl } = await readMacro(api, macroUuid);
   const next = setSetting(dsl, name, value);
+  if (next !== dsl) await saveDsl(api, macroUuid, macro, kind, next);
+}
+
+/**
+ * `±` / `▤`: switch error bars or the band on or off. The next value comes from the macro text
+ * as it is now, not from the button, so a press always switches even if the view is stale.
+ */
+export async function toggleErrInMacro(api: LogseqLike, macroUuid: string, button: 'bar' | 'band'): Promise<void> {
+  const { macro, kind, dsl } = await readMacro(api, macroUuid);
+  const parsed = parseQuery(dsl);
+  if (!parsed.ok) throw new Error(`Fix the query first: ${parsed.error.message}`);
+  const next = setSetting(dsl, 'err', toggleErr(parsed.query.err, button));
   if (next !== dsl) await saveDsl(api, macroUuid, macro, kind, next);
 }
 
