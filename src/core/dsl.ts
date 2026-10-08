@@ -18,15 +18,24 @@ export interface Query {
   by?: string;
   labels: boolean;
   err: ErrMode;
+  /** Columns left out of the table and CSV (`hide:a,b`); they stay available to the axis selectors. */
+  hide: string[];
+  /** Table thumbnail height in px (`img:96`), clamped to IMG_MIN–IMG_MAX; undefined means IMG_DEFAULT. */
+  img?: number;
 }
 /** `col` is a 0-based offset into the query text, used to place the error caret. */
 export interface DslError { message: string; col: number }
 export type ParseResult = { ok: true; query: Query } | { ok: false; error: DslError };
-export type SettingName = 'x' | 'y' | 'color' | 'sort' | 'by' | 'labels' | 'err';
+export type SettingName = 'x' | 'y' | 'color' | 'sort' | 'by' | 'labels' | 'err' | 'hide' | 'img';
 
-const SETTINGS: readonly SettingName[] = ['x', 'y', 'color', 'sort', 'by', 'labels', 'err'];
+const SETTINGS: readonly SettingName[] = ['x', 'y', 'color', 'sort', 'by', 'labels', 'err', 'hide', 'img'];
+export const IMG_DEFAULT = 64;
+export const IMG_MIN = 24;
+export const IMG_MAX = 400;
+const clampImg = (n: number): number => Math.min(IMG_MAX, Math.max(IMG_MIN, Math.round(n)));
 
-const emptyQuery = (): Query => ({ refs: [], conds: [], ys: [], labels: false, err: 'bar' });
+// `err:off`, the default, draws every row as its own point.
+const emptyQuery = (): Query => ({ refs: [], conds: [], ys: [], labels: false, err: 'off', hide: [] });
 
 class DslSyntaxError extends Error {
   constructor(message: string, readonly col: number) {
@@ -138,7 +147,7 @@ function parseOrThrow(text: string): Query {
     const m = /^([^:"[\]]+):([\s\S]*)$/.exec(t.s);
     if (m) {
       const name = m[1].toLowerCase() as SettingName;
-      if (!SETTINGS.includes(name)) throw new DslSyntaxError(`Unknown setting '${m[1]}'. Use x, y, color, sort, by, labels or err.`, t.at);
+      if (!SETTINGS.includes(name)) throw new DslSyntaxError(`Unknown setting '${m[1]}'. Use x, y, color, sort, by, labels, err, hide or img.`, t.at);
       if (seen.has(name)) throw new DslSyntaxError(`Duplicate '${name}:' setting. Keep one.`, t.at);
       seen.add(name);
       applySetting(q, name, m[2], t.at + m[1].length + 1);
@@ -199,6 +208,12 @@ function applySetting(q: Query, name: SettingName, v: string, at: number): void 
       q.err = e;
       break;
     }
+    case 'hide': q.hide = splitList(v, at).map((p) => key(p.s, p.at)); break;
+    case 'img': {
+      if (!/^\d+(\.\d+)?$/.test(v)) throw new DslSyntaxError('img: takes a height in pixels, e.g. img:96.', at);
+      q.img = clampImg(Number(v));
+      break;
+    }
   }
 }
 
@@ -233,9 +248,7 @@ export function setSetting(text: string, name: SettingName, value: string | null
 }
 
 function ysOf(text: string): string[] {
-  const parsed = parseQuery(text);
-  if (!parsed.ok) throw new Error(`Fix the query first: ${parsed.error.message}`);
-  return parsed.query.ys;
+  return queryOf(text).ys;
 }
 
 /**
@@ -259,11 +272,36 @@ export function removeY(text: string, col: string): string {
 
 /**
  * The `±` (error bars) and `▤` (band) buttons are two exclusive on/off toggles over `err:`.
- * Returns the new `err:` value, or null to remove the setting (bars, the default).
+ * Returns the new `err:` value, or null to remove the setting (every row drawn, the default).
  */
 export function toggleErr(current: ErrMode, button: 'bar' | 'band'): string | null {
-  if (button === 'bar') return current === 'bar' ? 'off' : null;
-  return current === 'band' ? 'off' : 'band';
+  return current === button ? null : button;
+}
+
+function queryOf(text: string): Query {
+  const parsed = parseQuery(text);
+  if (!parsed.ok) throw new Error(`Fix the query first: ${parsed.error.message}`);
+  return parsed.query;
+}
+
+/** Cols ▾ checkbox: hide `col` if shown, show it if hidden. Showing the last hidden one removes `hide:`. */
+export function toggleHidden(text: string, col: string): string {
+  const cur = queryOf(text).hide;
+  const next = cur.includes(col) ? cur.filter((k) => k !== col) : [...cur, col];
+  return setSetting(text, 'hide', next.length ? next.join(',') : null);
+}
+
+/** Img − / + : one ×1.25 step of the table thumbnail height; landing on the default removes `img:`. */
+export function stepImg(text: string, dir: 1 | -1): string {
+  const cur = queryOf(text).img ?? IMG_DEFAULT;
+  const next = clampImg(dir > 0 ? cur * 1.25 : cur / 1.25);
+  return setSetting(text, 'img', next === IMG_DEFAULT ? null : String(next));
+}
+
+/** Ctrl+wheel: write a height chosen live; the default removes `img:`. */
+export function setImg(text: string, px: number): string {
+  const next = clampImg(px);
+  return setSetting(text, 'img', next === IMG_DEFAULT ? null : String(next));
 }
 
 /** Logseq hands renderer arguments split on commas; put them back together. */

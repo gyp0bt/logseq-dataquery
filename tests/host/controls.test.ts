@@ -5,7 +5,7 @@ import { runQuery } from '../../src/core/query';
 import type { SourceBlock } from '../../src/core/rows';
 import type { ValueType } from '../../src/core/types';
 import { renderInline } from '../../src/core/view';
-import { applyControl, readMacro } from '../../src/host/actions';
+import { applyControl, readMacro, saveCell, setImgInMacro } from '../../src/host/actions';
 import { fakeLogseq } from './fakeLogseq';
 
 const block = (uuid: string, content: string): SourceBlock => ({
@@ -81,5 +81,51 @@ describe('scatter Color select and the by key', () => {
     colorSel().value = 'run';
     await applyControl(api, { value: colorSel().value, dataset: dataset(colorSel()) });
     expect((await readMacro(api, 'm')).dsl).toBe('by:run x:gre y:thick color:run');
+  });
+});
+
+describe('Cols ▾ and Img − / +', () => {
+  it('a Cols checkbox hides or shows its column, worked out from the macro text when clicked', async () => {
+    const api = setup('x:run hide:wide');
+    const box = (c: string) => document.querySelector<HTMLInputElement>(`.dq-cols input[data-col="${c}"]`)!;
+    expect(box('wide').checked).toBe(false);
+    expect(box('gre').checked).toBe(true);
+    const ds = dataset(box('gre'));
+    await applyControl(api, { value: 'on', dataset: ds });
+    expect((await readMacro(api, 'm')).dsl).toBe('x:run hide:wide,gre');
+    await applyControl(api, { value: 'on', dataset: dataset(box('wide')) });
+    expect((await readMacro(api, 'm')).dsl).toBe('x:run hide:gre');
+  });
+  it('Img + / − step the thumbnail height; Ctrl+wheel writes the height it ended on', async () => {
+    const api = setup('x:run');
+    await applyControl(api, { dataset: { macro: 'm', name: 'img', op: 'inc' } });
+    expect((await readMacro(api, 'm')).dsl).toBe('x:run img:80');
+    await applyControl(api, { dataset: { macro: 'm', name: 'img', op: 'dec' } });
+    expect((await readMacro(api, 'm')).dsl).toBe('x:run');
+    await setImgInMacro(api, 'm', 133.4);
+    expect((await readMacro(api, 'm')).dsl).toBe('x:run img:133');
+    await expect(applyControl(api, { dataset: { macro: 'm', name: 'img', op: 'up' } })).rejects.toThrow("unexpected control 'img:up'");
+  });
+});
+
+describe('saveCell', () => {
+  const graph = () => fakeLogseq({ P: [{ uuid: 'a', content: 'A\ngre:: 1' }] });
+  it('writes the value with upsertBlockProperty, an empty value removes the property', async () => {
+    const api = graph();
+    await saveCell(api, 'a', 'gre', ' 1.5 ');
+    expect(api.Editor.upsertBlockProperty).toHaveBeenCalledWith('a', 'gre', '1.5');
+    expect((await api.Editor.getBlock('a')).content).toBe('A\ngre:: 1.5');
+    await saveCell(api, 'a', 'note', 'hi');
+    expect((await api.Editor.getBlock('a')).content).toBe('A\ngre:: 1.5\nnote:: hi');
+    await saveCell(api, 'a', 'gre', '');
+    expect(api.Editor.removeBlockProperty).toHaveBeenCalledWith('a', 'gre');
+    expect((await api.Editor.getBlock('a')).content).toBe('A\nnote:: hi');
+  });
+  it('reports a failed write with its cause', async () => {
+    const api = graph();
+    api.Editor.upsertBlockProperty.mockRejectedValueOnce(new Error('db locked'));
+    const e = await saveCell(api, 'a', 'gre', '2').catch((x) => x);
+    expect(e.message).toBe("Could not save 'gre' to the block.");
+    expect(e.cause.message).toBe('db locked');
   });
 });

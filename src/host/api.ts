@@ -7,5 +7,7 @@ export interface LogseqLike {
     getPageBlocksTree(name: string): Promise<any[] | null>;
     updateBlock(uuid: string, content: string): Promise<unknown>;
     scrollToBlockInPage(page: string, uuid: string): void;
+    upsertBlockProperty(uuid: string, key: string, value: unknown): Promise<unknown>;
+    removeBlockProperty(uuid: string, key: string): Promise<unknown>;
   };
 }

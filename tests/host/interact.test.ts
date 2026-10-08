@@ -132,6 +132,101 @@ describe('query field inside Logseq', () => {
     expect(models).toContain('dqEdit');
   });
 
+  /**
+   * What the sandbox Logseq 0.10.15 did: with a block selected, the block content's mouse handlers
+   * (React, at the root) cleared the DOM selection on mouseup, so the caret left the field and
+   * typing went nowhere; its document handlers open raw editing on mousedown or Esc. These are
+   * registered before the plugin, as Logseq's are. Our window capture listener runs first.
+   */
+  describe('Logseq handlers never see events aimed at the field', () => {
+    let seen: string[];
+    let undo: Array<() => void>;
+    beforeEach(() => {
+      seen = [];
+      undo = [];
+      off();
+      const listen = (t: EventTarget, type: string, cap: boolean, what: string) => {
+        const f = (e: Event) => {
+          const k = (e as KeyboardEvent).key;
+          seen.push(`${what}:${type}${k ? ':' + k : ''}`);
+        };
+        t.addEventListener(type, f, cap);
+        undo.push(() => t.removeEventListener(type, f, cap));
+      };
+      const types = ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'compositionstart', 'compositionend', 'mousedown', 'mouseup', 'click', 'dblclick', 'pointerdown', 'pointerup', 'selectstart', 'copy', 'cut', 'paste'];
+      for (const t of types) {
+        listen(document, t, true, 'doc-capture');
+        listen(document.querySelector('.block-content')!, t, false, 'block');
+      }
+      ui = new Interact(document, deps);
+      off = ui.install();
+    });
+    afterEach(() => undo.forEach((u) => u()));
+
+    const fire = (el: Element, ev: Event) => el.dispatchEvent(ev);
+    const mouse = (type: string) => new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons: 1 });
+
+    it('mouse, pointer, keys, input and clipboard events in the field stay in the field, defaults intact', () => {
+      const f = field();
+      for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick', 'selectstart'])
+        expect(fire(f, t.startsWith('pointer') ? new PointerEvent(t, { bubbles: true, cancelable: true }) : mouse(t))).toBe(true);
+      f.focus();
+      for (const t of ['keydown', 'keypress', 'keyup']) expect(fire(f, new KeyboardEvent(t, { key: 'a', bubbles: true, cancelable: true }))).toBe(true);
+      for (const t of ['beforeinput', 'input']) fire(f, new InputEvent(t, { data: 'a', bubbles: true, cancelable: true }));
+      for (const t of ['compositionstart', 'compositionend']) fire(f, new CompositionEvent(t, { bubbles: true }));
+      for (const t of ['copy', 'cut', 'paste']) fire(f, new Event(t, { bubbles: true, cancelable: true }));
+      expect(seen).toEqual([]);
+      expect(models).toEqual([]);
+      expect(document.activeElement).toBe(f);
+    });
+
+    it('Esc reverts and leaves the field; neither its keydown nor the keyup that lands on the body reaches Logseq', () => {
+      const f = field();
+      f.focus();
+      f.value = 'junk';
+      expect(key('Escape')).toBe(false);
+      expect(f.value).toBe(DSL);
+      expect(document.activeElement).not.toBe(f);
+      document.body.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', bubbles: true }));
+      expect(seen).toEqual([]);
+      // A later Escape elsewhere is Logseq's again.
+      document.body.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', bubbles: true }));
+      expect(seen).toEqual(['doc-capture:keyup:Escape']);
+    });
+
+    it('Enter saves without Logseq hearing it', () => {
+      field().focus();
+      field().value = 'sort:y';
+      key('Enter');
+      expect(deps.submit).toHaveBeenCalledWith('m', 'sort:y');
+      expect(seen).toEqual([]);
+    });
+
+    it('a press in the field released outside it does not reach Logseq either', () => {
+      const f = field();
+      fire(f, mouse('mousedown'));
+      f.focus();
+      fire(document.querySelector('.dq-head')!, mouse('mouseup'));
+      fire(document.querySelector('.dq-head')!, mouse('click'));
+      expect(seen).toEqual([]);
+      expect(models).not.toContain('dqEdit');
+    });
+
+    it('the axis range box is shielded the same way', () => {
+      const ax = document.createElement('input');
+      ax.className = 'dq-axin';
+      document.querySelector('.dq-chartbox')!.appendChild(ax);
+      fire(ax, mouse('mousedown'));
+      fire(ax, new KeyboardEvent('keydown', { key: 'x', bubbles: true, cancelable: true }));
+      expect(seen).toEqual([]);
+    });
+
+    it('events outside our fields still reach Logseq', () => {
+      fire(document.querySelector('.dq-head')!, mouse('mousedown'));
+      expect(seen).toContain('doc-capture:mousedown');
+    });
+  });
+
   it('leaving the field asks for the held-back repaint', () => {
     const resume = vi.fn();
     off();
@@ -182,7 +277,8 @@ describe('chart and side buttons', () => {
     expect(document.querySelector('.dq-chartbox')!.classList.contains('dq-big')).toBe(true);
   });
 
-  it('draws error bars for the multi-valued row', () => {
+  it('draws error bars for the multi-valued row once ± is on', () => {
+    setup('scatter', `${DSL} err:bar`);
     ui.attach('slot');
     expect(document.querySelectorAll('svg.dq-chart .dq-err')).toHaveLength(1);
   });
@@ -395,7 +491,7 @@ describe('folded table under a chart', () => {
   it('with color: only, a point marks every row of its colour', () => {
     Element.prototype.scrollIntoView = vi.fn();
     const g = [block('a', 'A\nx:: 1\ny:: 10\ng:: p'), block('b', 'B\nx:: 1\ny:: 12\ng:: p'), block('c', 'C\nx:: 3\ny:: 30\ng:: q')];
-    setup('scatter', 'x:x y:y color:g', g);
+    setup('scatter', 'x:x y:y color:g err:bar', g);
     ui.attach('slot');
     expect(document.querySelectorAll('circle.dq-pt')).toHaveLength(2);
     document.querySelector<SVGElement>('circle[data-key="p"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -466,5 +562,22 @@ describe('middle-button pan on the table (Review Focus 4)', () => {
     for (const type of ['mousedown', 'mouseup', 'auxclick']) expect(fire(cell, type, { button: 1 }).defaultPrevented).toBe(true);
     expect(fire(cell, 'mousedown', { button: 0 }).defaultPrevented).toBe(false);
     expect(fire(document.body, 'mousedown', { button: 1 }).defaultPrevented).toBe(false);
+  });
+});
+
+describe('pressing into a field while Logseq edits a block', () => {
+  it('asks the host to leave raw editing, before the field takes the focus', () => {
+    const leaveEditing = vi.fn(() => order.push(document.activeElement?.id ?? ''));
+    const order: string[] = [];
+    off();
+    const ta = document.createElement('textarea');
+    ta.id = 'edit-block-1-x';
+    document.body.appendChild(ta);
+    ta.focus();
+    ui = new Interact(document, { ...deps, leaveEditing });
+    off = ui.install();
+    field().dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(leaveEditing).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['edit-block-1-x']);
   });
 });

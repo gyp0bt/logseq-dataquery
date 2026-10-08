@@ -22,6 +22,8 @@ export interface Row {
   /** Highest priority first; `sources[0]` is where clicks jump to. */
   sources: Source[];
   conflicts: Record<string, Conflict[]>;
+  /** Merged rows only: the blocks holding each key, highest priority first. */
+  owners?: Record<string, string[]>;
 }
 
 export function blockToRow(b: SourceBlock): Row | null {
@@ -83,9 +85,34 @@ function combine(rows: Row[]): Row {
       .map((r) => ({ value: r.values[k], pageTitle: r.sources[0].pageTitle }));
     if (seen.some((s) => !same(s.value, seen[0].value))) conflicts[k] = seen;
   }
-  return { id: ranked[0].id, title: ranked[0].title, values, sources: ranked.map((r) => r.sources[0]), conflicts };
+  const owners: Record<string, string[]> = {};
+  for (const k of Object.keys(values)) owners[k] = ranked.filter((r) => k in r.values).map((r) => r.sources[0].uuid);
+  return { id: ranked[0].id, title: ranked[0].title, values, sources: ranked.map((r) => r.sources[0]), conflicts, owners };
 }
 
 export function rowLabel(row: Row, mergeBy?: string): string {
   return (mergeBy && row.values[mergeBy]) || row.title || row.id.slice(0, 8);
+}
+
+export const SEVERAL_BLOCKS = 'Cell comes from several blocks; edit the block directly';
+
+/**
+ * The block a table cell edit writes `key` to: a single-block row's own block, or in a row merged
+ * by `by:` the one block holding that key. null when the cell is read-only (the `by` key itself).
+ */
+export function cellTarget(row: Row, key: string, by?: string): { uuid: string } | { error: string } | null {
+  if (by !== undefined && key === by) return null;
+  if (row.sources.length === 1) return { uuid: row.sources[0].uuid };
+  const own = row.owners?.[key] ?? [];
+  return own.length === 1 ? { uuid: own[0] } : { error: SEVERAL_BLOCKS };
+}
+
+/** Why `key` cannot be a new table column, or null when it can (lower case, no spaces, not shown yet). */
+export function validatePropKey(key: string, cols: string[]): string | null {
+  if (!key) return 'Type a property name.';
+  if (/\s/.test(key)) return 'No spaces in a property name.';
+  if (/[:,]/.test(key)) return "A property name cannot hold ':' or ','.";
+  if (key !== key.toLowerCase()) return `Use lower case: ${key.toLowerCase()}.`;
+  if (cols.includes(key)) return `'${key}' is already a column.`;
+  return null;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addY, joinMacroArgs, removeY, parseQuery, setSetting, toggleErr, type Cond, type Query } from '../../src/core/dsl';
+import { addY, joinMacroArgs, removeY, parseQuery, setSetting, stepImg, toggleErr, toggleHidden, type Cond, type Query } from '../../src/core/dsl';
 
 const ok = (t: string): Query => {
   const r = parseQuery(t);
@@ -14,7 +14,7 @@ const err = (t: string) => {
 
 describe('parseQuery', () => {
   it('empty text is the empty query', () =>
-    expect(ok('  ')).toEqual({ refs: [], conds: [], ys: [], labels: false, err: 'bar' }));
+    expect(ok('  ')).toEqual({ refs: [], conds: [], ys: [], labels: false, err: 'off', hide: [] }));
 
   it('reads every kind of term', () => {
     expect(ok('#work/nsb seed==0 gre-interp<0 x:gre-thin y:gre-thick color:seed sort:-r2 by:run labels:on err:band done?')).toEqual({
@@ -25,7 +25,7 @@ describe('parseQuery', () => {
         { kind: 'has', key: 'done?' },
       ],
       x: 'gre-thin', ys: ['gre-thick'], color: 'seed',
-      sort: { key: 'r2', desc: true }, by: 'run', labels: true, err: 'band',
+      sort: { key: 'r2', desc: true }, by: 'run', labels: true, err: 'band', hide: [],
     });
   });
 
@@ -70,7 +70,7 @@ describe('parseQuery', () => {
     expect(err('#t a<b')).toEqual({ message: "'<' compares numbers, got 'b'.", col: 5 });
     expect(err('a<1,2').message).toBe("'<' compares numbers, got '1,2'.");
     expect(err('x:a x:b')).toEqual({ message: "Duplicate 'x:' setting. Keep one.", col: 4 });
-    expect(err('#t foo:bar')).toEqual({ message: "Unknown setting 'foo'. Use x, y, color, sort, by, labels or err.", col: 3 });
+    expect(err('#t foo:bar')).toEqual({ message: "Unknown setting 'foo'. Use x, y, color, sort, by, labels, err, hide or img.", col: 3 });
     expect(err('seed== x:a')).toEqual({ message: "Missing value after '=='. Example: seed==1.3", col: 6 });
     expect(err('x:')).toEqual({ message: "Missing value after 'x:'.", col: 2 });
     expect(err('labels:yes').message).toBe('labels: takes on or off.');
@@ -111,10 +111,11 @@ describe('setSetting (Review Focus 3)', () => {
 
 describe('toggleErr', () => {
   it('± and ▤ are two exclusive on/off toggles', () => {
-    expect(toggleErr('bar', 'bar')).toBe('off');
-    expect(toggleErr('off', 'bar')).toBeNull();
-    expect(toggleErr('band', 'bar')).toBeNull();
-    expect(toggleErr('band', 'band')).toBe('off');
+    // Off by default (every row drawn); each button turns its mode on, or off again.
+    expect(toggleErr('off', 'bar')).toBe('bar');
+    expect(toggleErr('bar', 'bar')).toBeNull();
+    expect(toggleErr('band', 'bar')).toBe('bar');
+    expect(toggleErr('band', 'band')).toBeNull();
     expect(toggleErr('off', 'band')).toBe('band');
     expect(toggleErr('bar', 'band')).toBe('band');
   });
@@ -137,5 +138,31 @@ describe('addY / removeY', () => {
   });
   it('refuses a query with a mistake', () => {
     expect(() => addY('gre<', 'q')).toThrow('Fix the query first');
+  });
+});
+
+describe('hide: and img:', () => {
+  it('hide: lists hidden columns; img: is a thumbnail height clamped to 24–400 px', () => {
+    expect(ok('hide:a,b').hide).toEqual(['a', 'b']);
+    expect(ok('').hide).toEqual([]);
+    expect(ok('img:96').img).toBe(96);
+    expect(ok('img:5').img).toBe(24);
+    expect(ok('img:999').img).toBe(400);
+    expect(ok('').img).toBeUndefined();
+    expect(err('img:big').message).toBe('img: takes a height in pixels, e.g. img:96.');
+  });
+  it('toggleHidden adds or removes one column; the last one removes the setting', () => {
+    expect(toggleHidden('#t', 'a')).toBe('#t hide:a');
+    expect(toggleHidden('#t hide:a', 'b')).toBe('#t hide:a,b');
+    expect(toggleHidden('#t hide:a,b', 'a')).toBe('#t hide:b');
+    expect(toggleHidden('#t hide:b x:c', 'b')).toBe('#t x:c');
+    expect(() => toggleHidden('a<', 'b')).toThrow('Fix the query first');
+  });
+  it('stepImg grows or shrinks by 1.25, within 24–400; back at 64 the setting goes', () => {
+    expect(stepImg('#t', 1)).toBe('#t img:80');
+    expect(stepImg('#t', -1)).toBe('#t img:51');
+    expect(stepImg('#t img:80', -1)).toBe('#t');
+    expect(stepImg('#t img:390', 1)).toBe('#t img:400');
+    expect(stepImg('#t img:25', -1)).toBe('#t img:24');
   });
 });

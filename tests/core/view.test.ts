@@ -3,7 +3,7 @@ import { parseQuery, type Kind } from '../../src/core/dsl';
 import { runQuery, type QueryResult } from '../../src/core/query';
 import type { Row, SourceBlock } from '../../src/core/rows';
 import type { ValueType } from '../../src/core/types';
-import { cellClass, renderInline, renderLegacy, toCsv } from '../../src/core/view';
+import { cellClass, renderInline, renderLegacy, tableHtml, toCsv } from '../../src/core/view';
 
 const row = (id: string, values: Record<string, string>, conflicts: Row['conflicts'] = {}): Row => ({
   id, title: id, values, sources: [{ uuid: id, pageTitle: 'P', journalDay: null }], conflicts,
@@ -48,14 +48,14 @@ describe('renderInline', () => {
     const html = view('table', 'by:run sort:gre', result(rows, ['gre']));
     expect(html).not.toContain('Open ↗');
     expect(html).toContain('value="by:run sort:gre" placeholder=');
-    expect(html).toContain('<div class="dq-tbl" data-on-click="dqNoop">');
-    expect(html).toContain('<tr data-uuid="b" data-key="r2">');
+    expect(html).toContain('<div class="dq-tbl" data-on-click="dqNoop" data-macro="m" style="--dq-img:64px">');
+    expect(html).toContain('<tr data-uuid="b" data-row="1" data-key="r2">');
     // Without by:, color: keys the rows so a point of a colour group can mark all of them.
     const byColor = view('table', 'color:seed', result([row('a', { seed: '0' }), row('b', { seed: '0' })], ['seed']));
-    expect(byColor.match(/<tr data-uuid="[ab]" data-key="0">/g)).toHaveLength(2);
+    expect(byColor.match(/<tr data-uuid="[ab]" data-row="\d" data-key="0">/g)).toHaveLength(2);
     // With both, color: keys the rows too, as it is the scatter's group key.
     const both = view('scatter', 'by:run color:seed', result([row('a', { run: 'r1', seed: '0' }), row('b', { run: 'r2', seed: '0' })], ['seed']));
-    expect(both.match(/<tr data-uuid="[ab]" data-key="0">/g)).toHaveLength(2);
+    expect(both.match(/<tr data-uuid="[ab]" data-row="\d" data-key="0">/g)).toHaveLength(2);
     expect(html).toContain('2 rows');
     expect(html).toContain('⚠ 1');
     expect(html).toContain('data-on-click="dqJump" data-uuid="b"');
@@ -86,7 +86,8 @@ describe('renderInline', () => {
     expect(real('scatter', 'color:seed')).toContain('<option value="seed" selected>seed</option>');
     // The next value is worked out from the macro text when clicked, not baked in here.
     const pressed = (dsl: string, t: string) => new RegExp(`data-name="err" data-toggle="${t}" aria-pressed="(true|false)"`).exec(real('scatter', dsl))![1];
-    expect([pressed('', 'bar'), pressed('', 'band')]).toEqual(['true', 'false']);
+    expect([pressed('', 'bar'), pressed('', 'band')]).toEqual(['false', 'false']);
+    expect([pressed('err:bar', 'bar'), pressed('err:bar', 'band')]).toEqual(['true', 'false']);
     expect([pressed('err:band', 'bar'), pressed('err:band', 'band')]).toEqual(['false', 'true']);
     expect([pressed('err:off', 'bar'), pressed('err:off', 'band')]).toEqual(['false', 'false']);
     expect(html).not.toContain('data-name="err" data-value');
@@ -140,6 +141,25 @@ describe('renderInline', () => {
     expect(draw('by:run y:gre')).toMatch(/data-name="x"[^>]*>.*<option value="run">run<\/option>/);
   });
 
+  it('bar Color select lists every column with the by key; color:KEY splits bars, with the by key from the unmerged blocks', () => {
+    const bs: SourceBlock[] = [
+      { ...blocks[0], uuid: 'p', content: 'P\nrun:: r1\ngre:: 1\nseed:: 0' },
+      { ...blocks[0], uuid: 'q', content: 'Q\nrun:: r1\ngre:: 3\nseed:: 0' },
+      { ...blocks[0], uuid: 's', content: 'S\nrun:: r2\ngre:: 2\nseed:: 1' },
+    ];
+    const draw = (dsl: string) => {
+      const p = parseQuery(dsl);
+      if (!p.ok) throw new Error(p.error.message);
+      return view('bar', dsl, runQuery(p.query, 'bar', { blocks: bs, types: TYPES, macroUuid: 'm' }));
+    };
+    const sel = /data-name="color"[^>]*>(.*?)<\/select>/.exec(draw('by:run x:seed y:gre'))![1];
+    expect(sel).toBe('<option value="" selected>none</option><option value="run">run</option><option value="gre">gre</option><option value="seed">seed</option>');
+    const html = draw('by:run x:seed y:gre color:run');
+    // Unmerged: r1's two blocks make one bar with a whisker.
+    expect(html).toContain('data-tip="seed: 0\nrun: r1\ngre: mean 2.000\nmin 1 · max 3 · n=2"');
+    expect(html).toContain('data-trace="run = r2"');
+  });
+
   it('the scatter Color select offers the by key, whatever its type', () => {
     const html = real('scatter', 'by:run x:thick y:gre');
     const sel = /data-name="color"[^>]*>(.*?)<\/select>/.exec(html)![1];
@@ -190,5 +210,54 @@ describe('cellClass', () => {
     expect(cellClass('ratio', '1.00')).toBe('dq-fail');
     expect(cellClass('ratio', 'x')).toBe('');
     expect(cellClass('number', '0.5')).toBe('');
+  });
+});
+
+describe('hide: leaves columns out of the table and CSV', () => {
+  const rows = [row('a', { run: 'r1', gre: '1.2', note: 'x' })];
+  it('drops hidden columns, the by key falling back to the block label', () => {
+    const q = (parseQuery('by:run hide:note,run') as { ok: true; query: import('../../src/core/dsl').Query }).query;
+    const h = tableHtml(result(rows, ['gre', 'note']), q, 'm');
+    expect(h).toContain('<th>block</th>');
+    expect(h).not.toContain('>note<');
+    expect(h).toContain('data-value="gre">gre<');
+    expect(toCsv(result(rows, ['gre', 'note']), 'run', ['note', 'run'])).toBe('block,gre\r\na,1.2');
+    expect(toCsv(result(rows, ['gre', 'note']), 'run', ['note'])).toBe('run,gre\r\nr1,1.2');
+  });
+  it('the Cols menu lists every column, by key included, checked when shown', () => {
+    const p = parseQuery('by:run hide:note');
+    const res = result(rows, ['gre', 'note']);
+    for (const kind of ['table', 'scatter', 'bar'] as Kind[]) {
+      const html = renderInline({ kind, macroUuid: 'm', dsl: 'by:run hide:note', parsed: p, result: res });
+      expect(html).toContain('<summary>Cols ▾</summary>');
+      expect(html).toContain('<input type="checkbox" data-on-change="dqSet" data-macro="m" data-name="hide" data-op="toggle" data-col="run" checked>');
+      expect(html).toContain('data-col="note">');
+      // The axis selectors still offer the hidden column.
+      if (kind === 'bar') expect(html).toContain('<option value="note">note</option>');
+    }
+  });
+});
+
+describe('table cells: images, edit targets, + column', () => {
+  const rows = [row('a', { gre: '1.2', pic: '![p](../assets/p.png)' })];
+  const q = (dsl: string) => (parseQuery(dsl) as { ok: true; query: import('../../src/core/dsl').Query }).query;
+  it('draws image cells as thumbnails at the img: height, plain text escaped', () => {
+    const h = tableHtml(result(rows, ['gre', 'pic']), q('img:96'), 'm', { graphPath: '/g' });
+    expect(h).toContain('<img class="dq-img" src="file:///g/assets/p.png" alt="p" loading="lazy">');
+    expect(h).toContain('style="--dq-img:96px"');
+    expect(tableHtml(result(rows, ['gre']), q(''), 'm')).toContain('style="--dq-img:64px"');
+  });
+  it('marks each data cell with its column and row; offers + to add a column', () => {
+    const h = tableHtml(result(rows, ['gre']), q(''), 'm', { extraCols: ['new'] });
+    expect(h).toContain('<td class="dq-num dq-fail" data-col="gre">');
+    expect(h).toContain('<tr data-uuid="a" data-row="0">');
+    expect(h).toContain('data-col="new"></td>');
+    expect(h).toContain('<th class="dq-addcol" data-act="addcol" title="Add a property">+</th>');
+  });
+  it('Img − / + appear when the table holds an image', () => {
+    const html = renderInline({ kind: 'table', macroUuid: 'm', dsl: '', parsed: parseQuery(''), result: result(rows, ['gre', 'pic']) });
+    expect(html).toContain('data-name="img" data-op="dec"');
+    expect(html).toContain('data-name="img" data-op="inc"');
+    expect(view('table', '', result([row('a', { gre: '1' })], ['gre']))).not.toContain('data-name="img"');
   });
 });

@@ -4,7 +4,7 @@ import { canonical, rowLabel, type Row } from './rows';
 import { cellMean, cellStats, compareValues, toList, type ValueType } from './types';
 
 export interface ScatterSpec { x: string; y: string; color?: string; labels: boolean; err: ErrMode }
-export interface BarSpec { x: string; ys: string[] }
+export interface BarSpec { x: string; ys: string[]; color?: string }
 
 /** `trace` names a series a double-click can hide; `off` greys a hidden one. */
 export interface LegendItem { label: string; color: string; shape: 'dot' | 'square' | 'dash' | 'none'; trace?: string; off?: boolean }
@@ -148,18 +148,19 @@ const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
 
 /**
  * Groups rows for the scatter plot. With a group key (`color`, else `by`), rows sharing its value
- * form one group; without, each row is its own group. Inside a group the y numbers are pooled per distinct x (a row sits at
+ * form one group; without, or with `pool` off, each row is its own group. Inside a group the y numbers are pooled per distinct x (a row sits at
  * the mean of its x cell; every number of its y cell counts), and points come sorted by x.
  */
-export function scatterGroups(rows: Row[], plot: { x: string; y: string }, groupKey?: string): ScatterGroup[] {
+export function scatterGroups(rows: Row[], plot: { x: string; y: string }, groupKey?: string, pool = true): ScatterGroup[] {
   const groups = new Map<string, { key?: string; label: string; first: Row; at: Map<number, { ys: number[]; uuid: string }> }>();
   rows.forEach((r, i) => {
     const sx = cellStats(r.values[plot.x]);
     const ly = toList(r.values[plot.y]);
     if (!sx || !ly) return;
     const key = groupKey ? catOf(r.values[groupKey]) : undefined;
-    const id = key ?? `#${i}`;
-    if (!groups.has(id)) groups.set(id, { key, label: key ?? rowLabel(r), first: r, at: new Map() });
+    // Unpooled (`err:off`), every row is its own group but keeps its group key for colour and clicks.
+    const id = pool && key !== undefined ? key : `#${i}`;
+    if (!groups.has(id)) groups.set(id, { key, label: (pool && key) || rowLabel(r), first: r, at: new Map() });
     const g = groups.get(id)!;
     const x = Number(sx.mean.toPrecision(12));
     if (!g.at.has(x)) g.at.set(x, { ys: [], uuid: r.sources[0].uuid });
@@ -178,7 +179,8 @@ export function scatterSvg(rows: Row[], plot: ScatterSpec, types: Record<string,
   const { L, T, PW, PH, H, B, s } = b;
   // Rows group by `color`, else by `by`: a group pools its y per x (mean + min–max) and is one trace.
   const ckey = plot.color ?? by;
-  const groups = scatterGroups(rows, plot, ckey);
+  // Without `err:` every row is drawn as it is; `±` and `▤` pool each group per x.
+  const groups = scatterGroups(rows, plot, ckey, plot.err !== 'off');
   if (!groups.length) return empty(`No rows have numeric ${plot.x} and ${plot.y}.`);
   const traceOf = (g: ScatterGroup) => (ckey ? `${ckey} = ${catOf(g.first.values[ckey])}` : undefined);
   const hidden = new Set(opts.hidden ?? []);
@@ -332,22 +334,37 @@ export function dragAxis(d: Domain, a: Area, ax: 'x' | 'y', end: '0' | '1' | 'pa
   return { ...d, y0: d.y1 - ((d.y1 - v) * a.PH) / q1 };
 }
 
-/** Each row counts once, at the mean of its cell; whiskers span the rows of a category. */
+/**
+ * One bar per category: a y column, or with `color:` a y column and one colour value. `label`
+ * names it in the legend and is the trace a double-click hides.
+ */
+export interface BarSeries { y: string; c?: string; label: string }
+
+/** The bars of each category, in order: y columns, each split by the colour values when `color:` is set. */
+export function barSeries(rows: Row[], plot: BarSpec, types: Record<string, ValueType>): BarSeries[] {
+  const ck = plot.color;
+  if (!ck) return plot.ys.map((y) => ({ y, label: y }));
+  const cs = sortCats([...new Set(rows.map((r) => catOf(r.values[ck])))], types[ck] ?? 'string');
+  return plot.ys.flatMap((y) => cs.map((c) => ({ y, c, label: plot.ys.length > 1 ? `${y} · ${c}` : `${ck} = ${c}` })));
+}
+
+/** Each row counts once, at the mean of its cell; whiskers span the rows of a category (and colour). */
 export function barGroups(rows: Row[], plot: BarSpec, types: Record<string, ValueType>): BarGroup[] {
+  const series = barSeries(rows, plot, types);
   const groups = new Map<string, Row[]>();
   for (const r of rows) {
-    const v = r.values[plot.x];
-    const c = v === undefined ? NONE : canonical(v);
+    const c = catOf(r.values[plot.x]);
     if (!groups.has(c)) groups.set(c, []);
     groups.get(c)!.push(r);
   }
+  const ck = plot.color;
   return sortCats([...groups.keys()], types[plot.x] ?? 'string').map((cat) => {
     const rs = groups.get(cat)!;
     return {
       cat,
       n: rs.length,
-      stats: plot.ys.map((k) => {
-        const v = rs.map((r) => cellMean(r.values[k])).filter((x) => !isNaN(x));
+      stats: series.map(({ y, c }) => {
+        const v = rs.filter((r) => !ck || catOf(r.values[ck]) === c).map((r) => cellMean(r.values[y])).filter((x) => !isNaN(x));
         if (!v.length) return null;
         return { mean: v.reduce((a, b) => a + b, 0) / v.length, min: Math.min(...v), max: Math.max(...v), n: v.length };
       }),
@@ -357,11 +374,12 @@ export function barGroups(rows: Row[], plot: BarSpec, types: Record<string, Valu
 
 export function barSvg(rows: Row[], plot: BarSpec, types: Record<string, ValueType>, opts: ChartOpts = {}): Chart {
   const sc = scaleOf(opts);
+  const series = barSeries(rows, plot, types);
   const groups = barGroups(rows, plot, types);
   const hidden = new Set(opts.hidden ?? []);
-  const shownYs = plot.ys.map((k, j) => ({ k, j })).filter(({ k }) => !hidden.has(k));
-  // Each category keeps a minimum width, more with each y series drawn side by side; past that
-  // the chart grows wider than its box and scrolls.
+  const shownYs = series.map((se, j) => ({ se, j })).filter(({ se }) => !hidden.has(se.label));
+  // Each category keeps a minimum width, more with each bar drawn side by side (y columns ×
+  // colours); past that the chart grows wider than its box and scrolls.
   const catW = MIN_CAT_W + Math.max(0, shownYs.length - 1) * MIN_SERIES_W;
   const minPW = opts.size ? groups.length * catW * sc : 0;
   // Labels wrap at the category's width (approximate glyph width × Ctrl + wheel scale); the
@@ -376,6 +394,7 @@ export function barSvg(rows: Row[], plot: BarSpec, types: Record<string, ValueTy
   const visible = groups.flatMap((gr) => shownYs.map(({ j }) => gr.stats[j]).filter((s): s is NonNullable<typeof s> => !!s));
   const scaled = visible.length ? visible : all;
   const anyRatio = plot.ys.some((k) => types[k] === 'ratio');
+  const ck = plot.color;
   const lo = Math.min(0, ...scaled.map((s) => s.min));
   const hi = Math.max(0, ...scaled.map((s) => s.max), anyRatio ? 1 : -Infinity);
   const ty = niceTicks(lo, hi);
@@ -391,14 +410,15 @@ export function barSvg(rows: Row[], plot: BarSpec, types: Record<string, ValueTy
   groups.forEach((gr, i) => {
     const cx = L + gw * (i + 0.5);
     const left = cx - (bw * nb) / 2;
-    shownYs.forEach(({ k, j }, slot) => {
+    shownYs.forEach(({ se, j }, slot) => {
       const st = gr.stats[j];
       if (!st) return;
       const x = left + slot * bw;
       const top = Math.min(Y(st.mean), Y(0));
-      const tip = `${plot.x}: ${gr.cat}\n${k}: mean ${st.mean.toPrecision(4)}\nmin ${st.min} · max ${st.max} · n=${st.n}`;
+      const colour = ck ? `\n${ck}: ${se.c}` : '';
+      const tip = `${plot.x}: ${gr.cat}${colour}\n${se.y}: mean ${st.mean.toPrecision(4)}\nmin ${p4(st.min)} · max ${p4(st.max)} · n=${st.n}`;
       const title = b.sized ? '' : `<title>${esc(tip)}</title>`;
-      g += `<rect class="dq-bar" x="${f1(x + 1)}" y="${f1(top)}" width="${f1(bw - 2)}" height="${f1(Math.abs(Y(0) - Y(st.mean)))}" fill="${colorFor(j)}"${traceAttr(k)} data-tip="${esc(tip)}">${title}</rect>`;
+      g += `<rect class="dq-bar" x="${f1(x + 1)}" y="${f1(top)}" width="${f1(bw - 2)}" height="${f1(Math.abs(Y(0) - Y(st.mean)))}" fill="${colorFor(j)}"${traceAttr(se.label)} data-tip="${esc(tip)}">${title}</rect>`;
       if (st.n >= 2) {
         const m = f1(x + bw / 2);
         const a = f1(x + bw / 2 - cap);
@@ -415,10 +435,10 @@ export function barSvg(rows: Row[], plot: BarSpec, types: Record<string, ValueTy
   g = `<rect class="dq-area" x="${L}" y="${T}" width="${PW}" height="${PH}"/>` + g;
   g += `<line class="dq-zero" x1="${L}" y1="${f1(Y(0))}" x2="${L + PW}" y2="${f1(Y(0))}"/>`;
   if (anyRatio) g += `<line class="dq-ref" x1="${L}" y1="${f1(Y(1))}" x2="${L + PW}" y2="${f1(Y(1))}"/>`;
-  const legend: LegendItem[] = plot.ys.map((k, j) => ({ label: k, color: colorFor(j), shape: 'square', trace: k, off: hidden.has(k) }));
+  const legend: LegendItem[] = series.map((se, j) => ({ label: se.label, color: colorFor(j), shape: 'square', trace: se.label, off: hidden.has(se.label) }));
   legend.push({ label: 'whiskers: min–max (n ≥ 2)', color: '', shape: 'none' });
   if (anyRatio) legend.push({ label: 'ratio 1.00', color: 'var(--dq-fail)', shape: 'dash' });
-  return { html: frame(b, g, `${plot.ys.join(', ')} by ${plot.x}`), legend };
+  return { html: frame(b, g, `${plot.ys.join(', ')} by ${plot.x}${ck ? ` and ${ck}` : ''}`), legend };
 }
 
 /** The legend keeps its normal size: Ctrl + wheel scales the chart only. */

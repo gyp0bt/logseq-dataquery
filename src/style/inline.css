@@ -100,3 +100,22 @@
 .dq-note { margin: 2px 0; }
 .dq-note { padding: 2px 10px; font-size: 0.875em; color: var(--dq-muted); }
 .dq-empty { padding: 10px; color: var(--dq-muted); text-align: center; margin: 0; }
+/* Cols ▾: column on/off list in the side panel. */
+.dq-cols { color: var(--dq-muted); }
+.dq-cols > summary { cursor: pointer; list-style: none; border: 1px solid var(--dq-line); border-radius: 4px; padding: 2px 6px; color: var(--dq-fg); }
+.dq-cols > summary::-webkit-details-marker { display: none; }
+.dq-colsl { display: flex; flex-direction: column; gap: 1px; max-height: 14em; overflow-y: auto; padding: 3px 2px; }
+.dq-colsl label { display: flex; align-items: center; gap: 4px; color: var(--dq-fg); overflow-wrap: anywhere; cursor: pointer; }
+.dq-imgs { flex-direction: row; align-items: center; gap: 3px; }
+.dq-imgs .dq-sb { min-width: 1.8em; }
+/* Table images: one height for the whole table (--dq-img, set from img:), aspect ratio kept. */
+.dq-img { display: inline-block; max-height: var(--dq-img, 64px); max-width: calc(var(--dq-img, 64px) * 4); width: auto; height: auto; vertical-align: middle; cursor: zoom-in; border-radius: 3px; }
+.dq-img + .dq-img { margin-left: 4px; }
+.dq-lightbox { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.75); cursor: zoom-out; }
+.dq-lightbox img { max-width: 92vw; max-height: 92vh; object-fit: contain; background: #fff; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5); }
+/* Cell editing and the + column. */
+.dq-tbl td[data-col] { cursor: text; }
+.dq-addcol { cursor: pointer; color: var(--dq-muted); text-align: center; min-width: 1.6em; }
+.dq-addcol:hover { color: var(--dq-accent); }
+.dq-cellin, .dq-keyin { box-sizing: border-box; width: 100%; min-width: 6em; font: inherit; color: var(--dq-fg); background: var(--dq-code); border: 1px solid var(--dq-accent); border-radius: 3px; padding: 0 4px; }
+.dq-cellin:focus, .dq-keyin:focus { outline: none; }

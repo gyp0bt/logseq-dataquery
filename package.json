@@ -1,6 +1,6 @@
 {
   "name": "logseq-dataquery",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "(Beta) Typed tables, scatter and bar charts for property blocks in Logseq",
   "license": "MIT",
   "type": "module",

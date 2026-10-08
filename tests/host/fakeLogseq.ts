@@ -61,6 +61,19 @@ export function fakeLogseq(pages: Record<string, FakeBlock[]>) {
         byUuid(uuid)!.b.content = content;
       }),
       scrollToBlockInPage: vi.fn((_p: string, _u: string) => {}),
+      // Property lines are `key:: value` after the first line; enough for the table's cell edits.
+      upsertBlockProperty: vi.fn(async (uuid: string, key: string, value: unknown) => {
+        const f = byUuid(uuid)!;
+        const lines = f.b.content.split('\n');
+        const i = lines.findIndex((l, n) => n > 0 && l.startsWith(`${key}:: `));
+        if (i >= 0) lines[i] = `${key}:: ${value}`;
+        else lines.push(`${key}:: ${value}`);
+        f.b.content = lines.join('\n');
+      }),
+      removeBlockProperty: vi.fn(async (uuid: string, key: string) => {
+        const f = byUuid(uuid)!;
+        f.b.content = f.b.content.split('\n').filter((l, n) => n === 0 || !l.startsWith(`${key}:: `)).join('\n');
+      }),
     },
   };
   return api satisfies LogseqLike;

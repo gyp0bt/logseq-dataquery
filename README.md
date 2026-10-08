@@ -52,31 +52,36 @@ Terms are separated by spaces and all must hold. An empty query shows every prop
 | Setting | Meaning | Default |
 |---|---|---|
 | `x:` `y:` | Axes. A bar chart takes several: `y:a,b` | Scatter: 1st and 2nd numeric column. Bar: x = 1st category/text column, y = 1st numeric column |
-| `color:` | Scatter colour groups (one legend entry per group); it groups the points even when `by:` is set (below) | the `by:` value if set, else one colour |
+| `color:` | Scatter colour groups (one legend entry per group; it wins over `by:`, below). A bar chart splits each category into one bar per value | scatter: the `by:` value if set, else one colour; bar: one colour per y column |
 | `sort:key` / `sort:-key` | Ascending / descending; clicking a table header cycles it | outline order |
 | `by:run` | Blocks with the same `run` become one row; the newest journal wins and disagreeing cells get ⚠ | no merge |
 | `labels:on` | Write every point's name on the chart | names on hover |
-| `err:band` / `err:off` | How multi-valued cells are drawn (below) | error bars |
+| `err:bar` / `err:band` | Scatter: pool each group into a mean with min–max bars / band (below); `err:off` is the same as leaving it out | every row is its own point |
+| `hide:a,b` | Columns left out of the table and CSV (still offered by the axis and colour pickers) | all shown |
+| `img:96` | Height in px of every image in the table (24–400) | 64 |
 
-Edit the query right in the view: change the line at the top and press Enter to write it back into the macro (Esc cancels). Mistakes are shown under the line with a caret, and nothing is saved until the query is valid. Click blank space in the view to edit the block's raw text, as with Logseq's own renderers. While the query line has focus, repaints wait until you leave it, so a half-typed query is never wiped.
+Edit the query right in the view: change the line at the top and press Enter to write it back into the macro (Esc cancels; keys typed there never reach Logseq, so Esc does not open the raw block text). Mistakes are shown under the line with a caret, and nothing is saved until the query is valid. Click blank space in the view to edit the block's raw text, as with Logseq's own renderers. While the query line has focus, repaints wait until you leave it, so a half-typed query is never wiped.
 
 ## Several values in one cell
 
-A property such as `loss:: 1.27/1.31/1.29` (or `1.27, 1.31`) holds several numbers, e.g. one per seed. Charts draw the mean and show the min–max of **y only**; an x cell with several numbers just sits at their mean.
+A property such as `loss:: 1.27/1.31/1.29` (or `1.27, 1.31`) holds several numbers, e.g. one per seed. A scatter draws every row as its own point at its mean (coloured by group) until **±** or **▤** is on; then each group is pooled into a mean with the min–max of **y only**. An x cell with several numbers just sits at their mean.
 
 - **Groups (scatter):** the group key is `color:` if set, else `by:`; the blocks sharing its value form a group (the table still merges `by:` rows into one row). With neither, each row is its own group. Within a group, every y number at the same x is pooled.
 - **One x in a group:** one marker at the mean of y, with a vertical min–max bar (none for a single value).
 - **Several x in a group:** a line through the per-x means in x order, a marker and a min–max bar at each x.
-- **`err:bar` (default, ±):** the bars above. **`err:band` (▤):** a translucent min–max band (like plotly's `fill='tonexty'`) instead of bars along groups with several x; a single-x group keeps its bar. **`err:off`:** means only; lines stay.
+- **No `err:` (default):** no pooling, one point per row. **`err:bar` (±):** the pooled means and bars above. **`err:band` (▤):** a translucent min–max band (like plotly's `fill='tonexty'`) instead of bars along groups with several x; a single-x group keeps its bar.
 - Each group is coloured by its own value; rows without one form the `(none)` group.
-- **Bar:** each row counts at its mean; whiskers span the rows of a category. With `x:` set to the `by:` key, each category is one `by` value and its whisker spans that value's blocks.
+- **Bar:** with `color:` each category gets one bar per y column × colour value (legend `key = value`, or `y · value` with several y). Each row counts at its mean; whiskers span the rows of a category. With `x:` set to the `by:` key, each category is one `by` value and its whisker spans that value's blocks.
 - Hover shows the group (the `color:` value, else the `by:` value, else the block name), x, and y mean, min, max and n. The table shows the text as written and sorts by the mean.
 
 ## Buttons and pointer
 
-- **X▾ Y▾ Color▾** pick a column (a bar chart's X takes any column; the `by:` key is offered too, also for Color, whose blank entry reads `by: run` while `by:` drives the colours). A bar chart shows its y columns as chips: **×** removes one (removing the last drops `y:`, back to the default) and **+ Y▾** appends a numeric column not shown yet. **±** (error bars) and **▤** (band) are on/off toggles; the lit one is active, pressing it turns both off (`err:off`). These and table-header clicks rewrite the macro, so the view is saved with the page; any other text you wrote in the query stays as it was.
+- **X▾ Y▾ Color▾** pick a column (a bar chart's X takes any column; the `by:` key is offered too, also for Color, whose blank entry reads `by: run` while `by:` drives the colours). A bar chart shows its y columns as chips: **×** removes one (removing the last drops `y:`, back to the default) and **+ Y▾** appends a numeric column not shown yet. A bar chart's **Color▾** splits the bars by a column. **±** (pooled error bars) and **▤** (pooled band) are on/off toggles; the lit one is active, pressing it again goes back to one point per row. These and table-header clicks rewrite the macro, so the view is saved with the page; any other text you wrote in the query stays as it was.
 - **⟲** resets zoom and shows hidden traces; **⤢** enlarges the chart. Both are temporary and do not touch the macro.
 - **CSV** copies the rows and columns on screen to the clipboard.
+- **Cols▾** lists every column (the `by:` key too) with a checkbox; unticking one writes it into `hide:`.
+- **Images in cells:** `![alt](path)` (one or several) and cells holding just an image path or URL (png, jpg, jpeg, gif, webp, svg) show as thumbnails. `../assets/x.png` loads from the graph folder; only http, https and file URLs load. Click one to see it large; click or Esc closes. **Img − +** (shown when the table has images) and **Ctrl + wheel** over an image resize every image in the table and save the size as `img:`.
+- **Edit cells:** double-click a cell, type, Enter saves the property to its block (empty removes it), Esc cancels. In a `by:` row only a key that one block holds can be edited. The **+** header cell adds a column: type a new lower-case property name; it stays until you write a value into it.
 - Charts: hover for values (the title is the group's value), drag to zoom, double-click blank plot area to reset, click a point to open the table and highlight the rows of its group.
 - Under a scatter or bar chart the table is folded behind a one-line **▸ Table (N rows)** toggle; it stays as you left it while the view redraws. CSV works while folded.
 - Axis handles (scatter): drag the left or right quarter of the x axis to move only that end, the middle to pan; the same for the y axis (bottom end, top end, middle). **Double-click an end** to type its value (Enter applies, Esc or clicking away cancels); double-click the middle to reset that axis only.

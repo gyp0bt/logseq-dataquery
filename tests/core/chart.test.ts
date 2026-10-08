@@ -186,6 +186,37 @@ describe('several values in one row', () => {
   });
 });
 
+describe('scatter draws every row until ± or ▤ is on', () => {
+  const rs = [
+    row('a1', { x: '1', y: '1', g: 'A', run: 'r1' }),
+    row('a2', { x: '1', y: '3', g: 'A', run: 'r1' }),
+    row('a3', { x: '2', y: '2/4', g: 'A', run: 'r1' }),
+    row('b1', { x: '1', y: '5', g: 'B', run: 'r2' }),
+  ];
+  const t = { x: 'number', y: 'numlist', g: 'string', run: 'string' } as const;
+  it('err:off (the default): one point per row, coloured by its group, no pooling, no line, no bars', () => {
+    const c = scatterSvg(rs, { x: 'x', y: 'y', color: 'g', labels: false, err: 'off' }, t);
+    expect(c.html.match(/<circle /g)).toHaveLength(4);
+    expect(c.html).not.toContain('dq-line');
+    expect(c.html).not.toContain('dq-err');
+    expect(c.legend.filter((l) => l.trace).map((l) => l.label)).toEqual(['g = A', 'g = B']);
+    expect(c.html.match(/fill="var\(--dq-c0\)"[^>]*data-trace="g = A"/g)).toHaveLength(3);
+    // A cell with several numbers sits at its mean, without a bar.
+    expect(c.html).toContain('a3\nx: 2\ny: mean 3');
+  });
+  it('by: groups the colours the same way, still one point per block', () => {
+    const c = scatterSvg(rs, { x: 'x', y: 'y', labels: false, err: 'off' }, t, 'run');
+    expect(c.html.match(/<circle /g)).toHaveLength(4);
+    expect(c.legend.filter((l) => l.trace).map((l) => l.label)).toEqual(['run = r1', 'run = r2']);
+  });
+  it('err:bar pools each group per x: mean, min–max bar and a line through the means', () => {
+    const c = scatterSvg(rs, { x: 'x', y: 'y', color: 'g', labels: false, err: 'bar' }, t);
+    expect(c.html.match(/<circle /g)).toHaveLength(3);
+    expect(c.html.match(/class="dq-line"/g)).toHaveLength(1);
+    expect(c.html.match(/class="dq-err"/g)).toHaveLength(2);
+  });
+});
+
 describe('scatter with by:', () => {
   const merged = [row('blk1', { run: 'r1', x: '1', y: '2' }), row('blk2', { run: 'r2', x: '2', y: '3' })];
   const mt = { run: 'string', x: 'number', y: 'number', seed: 'category' } as const;
@@ -322,9 +353,9 @@ describe('scatter groups by by:', () => {
     expect(c.html.match(/class="dq-err"/g)).toHaveLength(1);
     expect(c.html).toMatch(/<g class="dq-err" data-trace="run = r1"/);
   });
-  it('err:off keeps the line of a multi-x group but draws no bar or band', () => {
+  it('err:off draws every block as its own point: no line, bar or band', () => {
     const c = draw([...one, ...many], 'off');
-    expect(c.html).toContain('class="dq-line"');
+    expect(c.html).not.toContain('class="dq-line"');
     expect(c.html).not.toContain('dq-err');
     expect(c.html).not.toContain('dq-band');
   });
@@ -362,10 +393,10 @@ describe('scatter groups by color: (no by:)', () => {
     expect(xs).toEqual([...xs].sort((m, n) => m - n));
     expect(xs).toHaveLength(3);
   });
-  it('err:band bands the multi-x colour group; err:off keeps its line only', () => {
+  it('err:band bands the multi-x colour group; err:off draws no line', () => {
     expect(draw('band', 'g').html.match(/class="dq-band"/g)).toHaveLength(1);
     const off = draw('off', 'g').html;
-    expect(off).toContain('class="dq-line"');
+    expect(off).not.toContain('class="dq-line"');
     expect(off).not.toContain('dq-err');
   });
   it('without by: or color: each row is its own point', () => {
@@ -384,5 +415,49 @@ describe('bar chart width with several y columns', () => {
     expect(width(['a'])).toBeGreaterThanOrEqual(10 * 56);
     expect(width(['a', 'b'])).toBeGreaterThan(width(['a']));
     expect(width(['a', 'b', 'd'])).toBeGreaterThan(width(['a', 'b']));
+  });
+});
+
+describe('bar chart colour grouping (color:)', () => {
+  const rs = [
+    row('a', { m: 'cnn', v: '1', s: '0' }),
+    row('b', { m: 'cnn', v: '3', s: '0' }),
+    row('c', { m: 'cnn', v: '5', s: '1' }),
+    row('d', { m: 'gnn', v: '2', s: '1' }),
+    row('e', { m: 'gnn', v: '4', w: '9' }),
+  ];
+  const t = { m: 'string', v: 'number', w: 'number', s: 'category' } as const;
+  const bars = (html: string) => [...html.matchAll(/<rect class="dq-bar"[^>]*data-trace="([^"]+)"/g)].map((m) => m[1]);
+  it('splits each category into one bar per colour value: mean, min, max and n of those rows', () => {
+    const g = barGroups(rs, { x: 'm', ys: ['v'], color: 's' }, t);
+    expect(g.map((x) => x.cat)).toEqual(['cnn', 'gnn']);
+    // Series: s = 0, s = 1, s = (none).
+    expect(g[0].stats).toEqual([{ mean: 2, min: 1, max: 3, n: 2 }, { mean: 5, min: 5, max: 5, n: 1 }, null]);
+    expect(g[1].stats).toEqual([null, { mean: 2, min: 2, max: 2, n: 1 }, { mean: 4, min: 4, max: 4, n: 1 }]);
+  });
+  it('draws the bars side by side with a legend entry per colour value; hover names x, colour and the stats', () => {
+    const c = barSvg(rs, { x: 'm', ys: ['v'], color: 's' }, t);
+    expect(bars(c.html)).toEqual(['s = 0', 's = 1', 's = 1', 's = (none)']);
+    expect(c.legend.filter((l) => l.trace).map((l) => [l.label, l.color])).toEqual([
+      ['s = 0', 'var(--dq-c0)'], ['s = 1', 'var(--dq-c1)'], ['s = (none)', 'var(--dq-c2)'],
+    ]);
+    expect(c.html).toContain('data-tip="m: cnn\ns: 0\nv: mean 2.000\nmin 1 · max 3 · n=2"');
+  });
+  it('several y columns give y × colour series, labelled y · colour', () => {
+    const c = barSvg(rs, { x: 'm', ys: ['v', 'w'], color: 's' }, t);
+    expect(c.legend.filter((l) => l.trace).map((l) => l.label)).toEqual(['v · 0', 'v · 1', 'v · (none)', 'w · 0', 'w · 1', 'w · (none)']);
+    expect(bars(c.html)).toContain('w · (none)');
+  });
+  it('a double-click hides one colour series', () => {
+    const c = barSvg(rs, { x: 'm', ys: ['v'], color: 's' }, t, { hidden: ['s = 1'] });
+    expect(bars(c.html)).toEqual(['s = 0', 's = (none)']);
+    expect(c.legend.find((l) => l.label === 's = 1')!.off).toBe(true);
+  });
+  it('each category grows by the bars it holds, so labels and bars do not overlap', () => {
+    const size = { w: 200, h: 360 };
+    const w = (color?: string) => Number(/width="(\d+)"/.exec(barSvg(rs, { x: 'm', ys: ['v'], color }, t, { size }).html)![1]);
+    expect(w()).toBe(240);
+    // Margins 64 + 20, two categories of 56 px plus 24 px for each bar past the first (3 colours).
+    expect(w('s')).toBe(64 + 20 + 2 * (56 + 2 * 24));
   });
 });

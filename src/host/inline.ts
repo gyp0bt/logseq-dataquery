@@ -20,6 +20,10 @@ export interface InlineHooks {
    * which would drop the focus and the half-typed text, so the repaint waits for `resume()`.
    */
   busy?(slot: string): boolean;
+  /** The graph folder, to resolve `../assets/…` images in table cells. */
+  graphPath?(): string | undefined;
+  /** Columns added with the table's `+` that no block holds yet. */
+  extraCols?(uuid: string): string[];
 }
 
 /** Tracks rendered macro slots so DB changes can re-render them. */
@@ -72,7 +76,7 @@ export class InlineViews {
     let view: ViewData | undefined;
     try {
       const ev = await this.engine.evaluate(dsl, kind, uuid);
-      input = { kind, macroUuid: uuid, dsl, ...ev };
+      input = { kind, macroUuid: uuid, dsl, ...ev, graphPath: this.hooks.graphPath?.(), extraCols: this.hooks.extraCols?.(uuid) };
       if (ev.result && ev.parsed.ok) view = { kind, query: ev.parsed.query, result: ev.result };
     } catch (e) {
       console.error('[dataquery] could not render the query view', e);
