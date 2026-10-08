@@ -1,6 +1,7 @@
 import { barSvg, legendHtml, scatterSvg, type Chart, type ChartOpts } from './chart';
-import type { Kind, ParseResult, Query } from './dsl';
+import { IMG_DEFAULT, type Kind, type ParseResult, type Query } from './dsl';
 import { esc } from './html';
+import { cellHtml, imagePieces } from './images';
 import { isAxisNumeric, typeOf, type QueryResult } from './query';
 import { canonical, rowLabel, type Row } from './rows';
 import { cellMean, isNumericType, type ValueType } from './types';
@@ -16,6 +17,25 @@ export interface InlineInput {
   chartOpts?: ChartOpts;
   /** Whether the table under a chart starts expanded (it is collapsed by default). */
   tableOpen?: boolean;
+  /** The graph folder, to resolve `../assets/…` images in cells. */
+  graphPath?: string;
+  /** Columns added with the table's `+` that no block holds yet (transient, kept by the host). */
+  extraCols?: string[];
+}
+
+export interface TableOpts { graphPath?: string; extraCols?: string[] }
+
+/** The data columns the table shows: not hidden, plus the transient ones from `+`. */
+export function shownCols(result: QueryResult, q: Query, extra: string[] = []): string[] {
+  const cols = result.cols.filter((k) => !q.hide.includes(k));
+  for (const k of extra) if (!cols.includes(k) && !result.cols.includes(k) && k !== q.by && !q.hide.includes(k)) cols.push(k);
+  return cols;
+}
+
+/** Whether a shown cell holds an image (then the side panel offers Img − / +). */
+export function hasImages(result: QueryResult, q: Query): boolean {
+  const cols = shownCols(result, q);
+  return result.rows.some((r) => cols.some((k) => r.values[k] !== undefined && imagePieces(r.values[k]) !== null));
 }
 
 /** Everything a view needs to draw its chart again or copy its table. */
@@ -36,42 +56,48 @@ const sortAttrs = (uuid: string, key: string, q: Query) => {
 };
 const arrowOf = (key: string, q: Query) => (q.sort?.key === key ? (q.sort.desc ? ' ▼' : ' ▲') : '');
 
-export function tableHtml(result: QueryResult, q: Query, uuid: string): string {
+export function tableHtml(result: QueryResult, q: Query, uuid: string, opts: TableOpts = {}): string {
   if (!result.rows.length) return '<p class="dq-empty">No rows match.</p>';
-  const head = result.cols
+  const cols = shownCols(result, q, opts.extraCols);
+  const by = q.by && !q.hide.includes(q.by) ? q.by : undefined;
+  const head = cols
     .map((k) => {
       const t = result.types[k] ?? 'string';
       return `<th class="dq-sortable${alignRight(t) ? ' dq-num' : ''}"${sortAttrs(uuid, k, q)}>${esc(k)}${arrowOf(k, q)}<span class="dq-type">${t}</span></th>`;
     })
     .join('');
-  const first = q.by ? `<th class="dq-sortable"${sortAttrs(uuid, q.by, q)}>${esc(q.by)}${arrowOf(q.by, q)}</th>` : '<th>block</th>';
+  const first = by ? `<th class="dq-sortable"${sortAttrs(uuid, by, q)}>${esc(by)}${arrowOf(by, q)}</th>` : '<th>block</th>';
   const body = result.rows
-    .map((r) => {
-      const cells = result.cols
+    .map((r, i) => {
+      const cells = cols
         .map((k) => {
           const t = result.types[k] ?? 'string';
           const v = r.values[k];
           const cls = [alignRight(t) ? 'dq-num' : '', cellClass(t, v), r.conflicts[k] ? 'dq-conflict' : ''].filter(Boolean).join(' ');
           const alt = r.conflicts[k] ? ` title="${esc(r.conflicts[k].map((c) => `${c.value} (${c.pageTitle})`).join(' / '))}"` : '';
-          return `<td class="${cls}"${alt}>${esc(v ?? '')}${r.conflicts[k] ? '<sup>⚠</sup>' : ''}</td>`;
+          // `data-col` + the row's `data-row` let a double-click find the block to edit.
+          return `<td class="${cls}" data-col="${esc(k)}"${alt}>${cellHtml(v ?? '', opts.graphPath)}${r.conflicts[k] ? '<sup>⚠</sup>' : ''}</td>`;
         })
         .join('');
       // A chart point finds its rows by the value of its group key: `color` (every row of that
       // colour), else `by` (one merged row).
       const gk = q.color ?? q.by;
       const key = gk && r.values[gk] !== undefined ? ` data-key="${esc(canonical(r.values[gk]))}"` : '';
-      return `<tr data-uuid="${esc(r.sources[0].uuid)}"${key}><td class="dq-link" data-on-click="dqJump" data-uuid="${esc(r.sources[0].uuid)}">${esc(rowLabel(r, q.by))}</td>${cells}</tr>`;
+      return `<tr data-uuid="${esc(r.sources[0].uuid)}" data-row="${i}"${key}><td class="dq-link" data-on-click="dqJump" data-uuid="${esc(r.sources[0].uuid)}">${esc(rowLabel(r, by))}</td>${cells}<td></td></tr>`;
     })
     .join('');
-  return `<div class="dq-tbl" data-on-click="dqNoop"><table><thead><tr>${first}${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  const add = '<th class="dq-addcol" data-act="addcol" title="Add a property">+</th>';
+  return `<div class="dq-tbl" data-on-click="dqNoop" data-macro="${esc(uuid)}" style="--dq-img:${q.img ?? IMG_DEFAULT}px"><table><thead><tr>${first}${head}${add}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 const csvCell = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 
 /** The rows and columns on screen as CSV (RFC 4180: CRLF between records, quotes doubled). */
-export function toCsv(result: QueryResult, by?: string): string {
-  const lines = [[by ?? 'block', ...result.cols]];
-  for (const r of result.rows) lines.push([rowLabel(r, by), ...result.cols.map((k) => r.values[k] ?? '')]);
+export function toCsv(result: QueryResult, by?: string, hide: string[] = []): string {
+  const cols = result.cols.filter((k) => !hide.includes(k));
+  const b = by && !hide.includes(by) ? by : undefined;
+  const lines = [[b ?? 'block', ...cols]];
+  for (const r of result.rows) lines.push([rowLabel(r, b), ...cols.map((k) => r.values[k] ?? '')]);
   return lines.map((l) => l.map(csvCell).join(',')).join('\r\n');
 }
 
@@ -135,6 +161,22 @@ function yChips(uuid: string, q: Query, ys: string[], numeric: string[]): string
 const button = (act: string, icon: string, title: string) =>
   `<button class="dq-sb" data-act="${act}" title="${title}" aria-label="${title}">${icon}</button>`;
 
+/** Cols ▾: one checkbox per column (the `by` key too); unticking writes it into `hide:`. */
+function colsMenu(uuid: string, q: Query, cols: string[]): string {
+  const m = esc(uuid);
+  const items = cols
+    .map((k) => `<label><input type="checkbox" data-on-change="dqSet" data-macro="${m}" data-name="hide" data-op="toggle" data-col="${esc(k)}"${q.hide.includes(k) ? '' : ' checked'}>${esc(k)}</label>`)
+    .join('');
+  return `<details class="dq-cols"><summary>Cols ▾</summary><div class="dq-colsl">${items}</div></details>`;
+}
+
+/** Img − / +: the height of every thumbnail in the table, one ×1.25 step per press. */
+function imgButtons(uuid: string): string {
+  const b = (op: string, icon: string, what: string) =>
+    `<button class="dq-sb" data-on-click="dqSet" data-macro="${esc(uuid)}" data-name="img" data-op="${op}" title="${what}" aria-label="${what}">${icon}</button>`;
+  return `<div class="dq-ctl dq-imgs"><span>Img</span>${b('dec', '−', 'Smaller images (or Ctrl+wheel on one)')}${b('inc', '+', 'Larger images (or Ctrl+wheel on one)')}</div>`;
+}
+
 /** The column of controls on the right; every choice rewrites the macro except reset and enlarge. */
 function sideHtml(inp: InlineInput, q: Query, res: QueryResult): string {
   const uuid = inp.macroUuid;
@@ -158,6 +200,8 @@ function sideHtml(inp: InlineInput, q: Query, res: QueryResult): string {
     html += select(uuid, 'color', 'Color', cols, res.axes.color, 'none');
     html += button('expand', '⤢', 'Enlarge') + csv;
   } else html += csv;
+  html += colsMenu(uuid, q, cols);
+  if (hasImages(res, q)) html += imgButtons(uuid);
   return `<div class="dq-side" data-on-click="dqNoop" data-macro="${esc(uuid)}">${html}</div>`;
 }
 
@@ -199,7 +243,8 @@ export function renderInline(inp: InlineInput): string {
     const inner = c ? `<div class="dq-plot">${c.html}</div>${legendHtml(c.legend)}` : `<p class="dq-empty">${CHART_HINT[inp.kind]}</p>`;
     chart = `<div class="dq-chartbox" data-on-click="dqNoop" data-macro="${uuid}">${inner}</div>`;
   }
-  const table = inp.kind === 'table' ? tableHtml(res, q, inp.macroUuid) : foldedTable(tableHtml(res, q, inp.macroUuid), res.rows.length, !!inp.tableOpen);
+  const tbl = tableHtml(res, q, inp.macroUuid, { graphPath: inp.graphPath, extraCols: inp.extraCols });
+  const table = inp.kind === 'table' ? tbl : foldedTable(tbl, res.rows.length, !!inp.tableOpen);
   const notes = res.warnings.map((w) => `<p class="dq-note">${esc(w)}</p>`).join('');
   return root(false, meta, `<div class="dq-body"><div class="dq-main">${chart}${table}${notes}</div>${sideHtml(inp, q, res)}</div>`);
 }

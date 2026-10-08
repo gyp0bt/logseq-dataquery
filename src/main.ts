@@ -2,7 +2,7 @@ import '@logseq/libs';
 import { joinMacroArgs, type Kind } from './core/dsl';
 import { buildMacro, LEGACY_TYPE, MACRO_KINDS } from './core/macroText';
 import { renderLegacy } from './core/view';
-import { applyControl, errorText, jumpTo, readMacro, saveDsl, type SetEvent } from './host/actions';
+import { applyControl, errorText, jumpTo, readMacro, saveCell, saveDsl, setImgInMacro, type SetEvent } from './host/actions';
 import type { LogseqLike } from './host/api';
 import { Engine } from './host/engine';
 import { InlineViews } from './host/inline';
@@ -39,6 +39,16 @@ async function main(): Promise<void> {
   const engine = new Engine(api, typesPage);
   logseq.provideStyle(tokensCss + '\n' + inlineCss);
 
+  // Asked once: `../assets/x.png` in a table cell loads from `file://<graph>/assets/x.png`.
+  let graphPath: string | undefined;
+  try {
+    graphPath = (await logseq.App.getCurrentGraph())?.path ?? undefined;
+  } catch (e) {
+    console.warn('[dataquery] could not read the graph folder; asset images in tables will show as text', e);
+  }
+  /** Columns added with the table's `+`, per macro block, until a value is written. */
+  const extra = new Map<string, string[]>();
+
   let interact: Interact | undefined;
   const provide = (slot: string, html: string) => {
     logseq.provideUI({ key: `dataquery-${slot}`, slot, reset: true, template: html });
@@ -64,6 +74,8 @@ async function main(): Promise<void> {
       const active = slotEl(slot)?.ownerDocument.activeElement;
       return !!active?.matches(FIELD_SELECTOR) && !!slotEl(slot)?.contains(active);
     },
+    graphPath: () => graphPath,
+    extraCols: (uuid) => extra.get(uuid) ?? [],
   });
 
   try {
@@ -73,6 +85,12 @@ async function main(): Promise<void> {
       report,
       notify: (msg) => void logseq.UI.showMsg(msg, 'success'),
       resume: () => void views.resume().catch(report),
+      saveCell: (block, key, value) => saveCell(api, block, key, value),
+      setImg: (uuid, px) => setImgInMacro(api, uuid, px),
+      addColumn: (uuid, key) => {
+        extra.set(uuid, [...(extra.get(uuid) ?? []), key]);
+        void views.refreshAll().catch(report);
+      },
       leaveEditing: () => {
         // Synchronous, in Logseq's own window: the async plugin API would arrive after the focus moved.
         const host = parent as unknown as { logseq?: { api?: { exit_editing_mode?: (select: boolean) => void } } };

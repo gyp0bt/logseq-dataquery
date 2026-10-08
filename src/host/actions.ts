@@ -1,4 +1,4 @@
-import { addY, parseQuery, removeY, setSetting, toggleErr, type Kind, type SettingName } from '../core/dsl';
+import { addY, parseQuery, removeY, setImg, setSetting, stepImg, toggleErr, toggleHidden, type Kind, type SettingName } from '../core/dsl';
 import { buildMacro, findMacro, replaceMacro } from '../core/macroText';
 import type { LogseqLike } from './api';
 
@@ -68,7 +68,30 @@ export async function editYInMacro(api: LogseqLike, macroUuid: string, op: 'add'
   if (next !== dsl) await saveDsl(api, macroUuid, macro, kind, next);
 }
 
-export const SETTING_NAMES: readonly string[] = ['x', 'y', 'color', 'sort', 'by', 'labels', 'err'] satisfies SettingName[];
+/** Rewrite the macro with `edit` applied to its query as the block holds it now. */
+async function editMacro(api: LogseqLike, macroUuid: string, edit: (dsl: string) => string): Promise<void> {
+  const { macro, kind, dsl } = await readMacro(api, macroUuid);
+  const next = edit(dsl);
+  if (next !== dsl) await saveDsl(api, macroUuid, macro, kind, next);
+}
+
+/** Ctrl+wheel over a table image: write the height it ended on as `img:`. */
+export function setImgInMacro(api: LogseqLike, macroUuid: string, px: number): Promise<void> {
+  return editMacro(api, macroUuid, (dsl) => setImg(dsl, px));
+}
+
+/** A table cell edit: write `key:: value` into the block, or remove the property when the value is empty. */
+export async function saveCell(api: LogseqLike, blockUuid: string, key: string, value: string): Promise<void> {
+  const v = value.trim();
+  try {
+    if (v) await api.Editor.upsertBlockProperty(blockUuid, key, v);
+    else await api.Editor.removeBlockProperty(blockUuid, key);
+  } catch (e) {
+    throw new Error(v ? `Could not save '${key}' to the block.` : `Could not remove '${key}' from the block.`, { cause: e });
+  }
+}
+
+export const SETTING_NAMES: readonly string[] = ['x', 'y', 'color', 'sort', 'by', 'labels', 'err', 'hide', 'img'] satisfies SettingName[];
 
 /**
  * What a `data-on-*` control sends: a select carries `value`, a button names `data-value`.
@@ -87,6 +110,14 @@ export async function applyControl(api: LogseqLike, e: SetEvent): Promise<void> 
   if (toggle !== undefined) {
     if (name !== 'err' || (toggle !== 'bar' && toggle !== 'band')) throw new Error(`Data query: unexpected toggle '${name}:${toggle}'.`);
     return toggleErrInMacro(api, macro, toggle);
+  }
+  if (name === 'hide' && op === 'toggle' && e.dataset.col) {
+    const col = e.dataset.col;
+    return editMacro(api, macro, (dsl) => toggleHidden(dsl, col));
+  }
+  if (name === 'img' && op !== undefined) {
+    if (op !== 'inc' && op !== 'dec') throw new Error(`Data query: unexpected control 'img:${op}'.`);
+    return editMacro(api, macro, (dsl) => stepImg(dsl, op === 'inc' ? 1 : -1));
   }
   if (op !== undefined) {
     if (name !== 'y' || (op !== 'add' && op !== 'remove')) throw new Error(`Data query: unexpected control '${name}:${op}'.`);

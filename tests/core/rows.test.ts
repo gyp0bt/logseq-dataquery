@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockToRow, mergeRows, rowLabel, type Row, type SourceBlock } from '../../src/core/rows';
+import { blockToRow, cellTarget, mergeRows, rowLabel, validatePropKey, type Row, type SourceBlock } from '../../src/core/rows';
 
 const block = (uuid: string, content: string, over: Partial<SourceBlock> = {}): SourceBlock => ({
   uuid, content, page: 'p', pageTitle: 'P', journalDay: null, pathRefs: [], preBlock: false, seq: 0, ...over,
@@ -60,5 +60,34 @@ describe('rowLabel', () => {
     expect(rowLabel(row(block('abcdef123456', 'T\nrun:: r1')), 'run')).toBe('r1');
     expect(rowLabel(row(block('abcdef123456', 'T\nk:: v')))).toBe('T');
     expect(rowLabel(row(block('abcdef123456', 'k:: v')))).toBe('abcdef12');
+  });
+});
+
+describe('cellTarget: which block a table cell edit writes to', () => {
+  const a = row(block('a', 'run:: r1\ngre:: 1.2', { journalDay: 2 }));
+  const b = row(block('b', 'run:: r1\nthick:: 3\ngre:: 1.3', { journalDay: 1 }));
+  it('a single-block row writes to its block, even for a key it lacks', () => {
+    expect(cellTarget(a, 'gre')).toEqual({ uuid: 'a' });
+    expect(cellTarget(a, 'new')).toEqual({ uuid: 'a' });
+  });
+  it('a merged row writes only where one block holds the key', () => {
+    const [m] = mergeRows([a, b], 'run');
+    expect(cellTarget(m, 'thick', 'run')).toEqual({ uuid: 'b' });
+    expect(cellTarget(m, 'gre', 'run')).toEqual({ error: 'Cell comes from several blocks; edit the block directly' });
+    expect(cellTarget(m, 'new', 'run')).toEqual({ error: 'Cell comes from several blocks; edit the block directly' });
+  });
+  it('the by key is read-only', () => {
+    expect(cellTarget(a, 'run', 'run')).toBeNull();
+  });
+});
+
+describe('validatePropKey', () => {
+  it('takes a new lower-case key without spaces', () => {
+    expect(validatePropKey('note-2', ['gre'])).toBeNull();
+    expect(validatePropKey('', ['gre'])).toBe('Type a property name.');
+    expect(validatePropKey('Gre', ['gre'])).toBe('Use lower case: gre.');
+    expect(validatePropKey('a b', [])).toBe('No spaces in a property name.');
+    expect(validatePropKey('gre', ['gre'])).toBe("'gre' is already a column.");
+    expect(validatePropKey('a:b', [])).toBe("A property name cannot hold ':' or ','.");
   });
 });

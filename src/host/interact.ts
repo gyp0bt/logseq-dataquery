@@ -1,8 +1,9 @@
 import { dragAxis, formatTick, legendHtml, type ChartOpts, type Domain } from '../core/chart';
 import { parseQuery } from '../core/dsl';
 import { chartOf, errorHtml, tableToggleText, toCsv, type ViewData } from '../core/view';
+import { TableTools, type TableDeps } from './tableTools';
 
-export interface InteractDeps {
+export interface InteractDeps extends Pick<TableDeps, 'saveCell' | 'addColumn' | 'setImg'> {
   /** Write a valid query back into the macro. */
   submit(uuid: string, dsl: string): Promise<void>;
   /** What the view of a macro last showed, to redraw its chart or copy its table. */
@@ -34,6 +35,8 @@ export const SHIELDED_EVENTS = [
   'keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend',
   'mousedown', 'mouseup', 'click', 'dblclick', 'pointerdown', 'pointerup', 'selectstart', 'copy', 'cut', 'paste',
 ] as const;
+/** Table cells a double-click or click turns into a field (cell value, new column name). */
+const TABLE_CELLS = '.dq-tbl td[data-col], .dq-tbl th.dq-addcol';
 const RELEASES = new Set(['mouseup', 'pointerup', 'click']);
 
 /**
@@ -60,6 +63,9 @@ export class Interact {
   private state = new Map<string, ChartState>();
   /** Macro blocks whose table under the chart the user expanded. */
   private opened = new Set<string>();
+  /** Macro blocks whose Cols ▾ list is open, so a repaint after a tick keeps it open. */
+  private colsOpen = new Set<string>();
+  private table: TableTools;
   /** The one hover label, fixed-positioned in Logseq's <body> so no overflow box can clip it. */
   private tipEl?: HTMLElement;
   private observers = new WeakMap<Element, ResizeObserver>();
@@ -71,14 +77,16 @@ export class Interact {
   private swallowKeyUp?: string;
   private axDrag?: { box: HTMLElement; ax: 'x' | 'y'; end: AxisEnd; d: Domain; a: NonNullable<ReturnType<typeof areaOf>>; from: { x: number; y: number }; cx: number; cy: number; moved: boolean };
 
-  constructor(private doc: Document, private deps: InteractDeps) {}
+  constructor(private doc: Document, private deps: InteractDeps) {
+    this.table = new TableTools(doc, deps);
+  }
 
   install(): () => void {
     const on: Array<[string, (e: Event) => void, boolean]> = [
       // Capture phase: Logseq's block handlers (React 17, delegated at its root) stop the
       // propagation of mouseover and others, so a bubbling listener on the document never hears them.
       ['pointerdown', (e) => (this.pressed = e.target as Element | null), true],
-      ['mousedown', (e) => (this.pressed = e.target as Element | null), true],
+      ['mousedown', (e) => this.onMouseDown(e as MouseEvent), true],
       ['focusout', (e) => this.onFocusOut(e as FocusEvent), true],
       ['click', (e) => this.onClick(e as MouseEvent), true],
       ['dblclick', (e) => this.onDblClick(e as MouseEvent), true],
@@ -119,17 +127,25 @@ export class Interact {
 
   /** Draw the charts under `slotId` at their real width once Logseq has inserted the new HTML. */
   attach(slotId: string, tries = 40): void {
-    const boxes = [...(this.doc.getElementById(slotId)?.querySelectorAll<HTMLElement>('.dq-chartbox:not([data-live])') ?? [])];
-    if (!boxes.length) {
+    const views = [...(this.doc.getElementById(slotId)?.querySelectorAll<HTMLElement>('.dq:not([data-live])') ?? [])];
+    if (!views.length) {
       if (tries > 0) setTimeout(() => this.attach(slotId, tries - 1), 25);
       return;
     }
+    for (const view of views) {
+      view.dataset.live = '1';
+      const uuid = view.dataset.macro;
+      const fold = view.querySelector<HTMLElement>('.dq-fold');
+      if (fold && uuid) setFold(fold, this.opened.has(uuid));
+      const cols = view.querySelector<HTMLDetailsElement>('.dq-cols');
+      if (cols && uuid) cols.open = this.colsOpen.has(uuid);
+      this.table.restore(view);
+    }
+    const boxes = views.flatMap((v) => [...v.querySelectorAll<HTMLElement>('.dq-chartbox:not([data-live])')]);
     for (const box of boxes) {
       box.dataset.live = '1';
       const st = this.stateOf(box);
       box.classList.toggle('dq-big', st.big);
-      const fold = box.closest('.dq')?.querySelector<HTMLElement>('.dq-fold');
-      if (fold) setFold(fold, this.opened.has(box.dataset.macro!));
       // The view was painted at its last size and state already; redraw only if the width moved.
       const plotEl = box.querySelector<HTMLElement>('.dq-plot');
       const drawnW = plotEl?.querySelector('svg.dq-chart')?.getAttribute('data-w');
@@ -195,9 +211,20 @@ export class Interact {
   // ---- query field ----
 
   /** Window capture: events aimed at one of our fields are handled here and go no further. */
+  private onMouseDown(e: MouseEvent): void {
+    this.pressed = e.target as Element | null;
+    // A press on a table cell may open a cell editor (double-click, `+`): leave another block's raw
+    // editing now, while its textarea still has the focus, as a press on a field does.
+    if (this.pressed?.closest?.(TABLE_CELLS)) this.deps.leaveEditing?.();
+  }
+
   private shield(e: Event): void {
     if (e.type === 'keyup' && this.swallowKeyUp !== undefined && (e as KeyboardEvent).key === this.swallowKeyUp) {
       this.swallowKeyUp = undefined;
+      return stopAll(e);
+    }
+    if (this.table.escBox(e as KeyboardEvent)) {
+      this.swallowKeyUp = 'Escape';
       return stopAll(e);
     }
     const t = e.target as Element | null;
@@ -212,6 +239,10 @@ export class Interact {
   }
 
   private onKey(e: KeyboardEvent): void {
+    if (this.table.onKey(e)) {
+      if (e.key === 'Escape' || e.key === 'Enter') this.swallowKeyUp = e.key;
+      return;
+    }
     const axIn = (e.target as Element | null)?.closest?.('input.dq-axin') as HTMLInputElement | null;
     if (axIn) return this.onAxisKey(axIn, e);
     const input = (e.target as Element | null)?.closest?.('input.dq-dsl') as HTMLInputElement | null;
@@ -241,6 +272,7 @@ export class Interact {
   }
 
   private onFocusOut(e: FocusEvent): void {
+    this.table.onFocusOut(e);
     if ((e.target as Element | null)?.matches?.(FIELD_SELECTOR)) this.deps.resume?.();
   }
 
@@ -262,12 +294,26 @@ export class Interact {
       e.stopPropagation();
       return;
     }
+    if (this.table.onClick(e)) return;
+    const summary = t?.closest?.('.dq-cols > summary') as HTMLElement | null;
+    if (summary) return this.toggleCols(e, summary);
     const fold = t?.closest?.('.dq-fold [data-act="table"]') as HTMLElement | null;
     if (fold) return this.toggleTable(fold);
     const act = t?.closest?.('.dq-side [data-act]') as HTMLElement | null;
     if (act) return this.sideAction(act);
     const pt = t?.closest?.('.dq-pt') as SVGElement | null;
     if (pt) this.highlightRow(pt);
+  }
+
+  /** Cols ▾ opens and closes here (not natively), so its state is known and kept across repaints. */
+  private toggleCols(e: MouseEvent, summary: HTMLElement): void {
+    const det = summary.parentElement as HTMLDetailsElement;
+    const uuid = det.closest<HTMLElement>('.dq')?.dataset.macro;
+    e.preventDefault();
+    det.open = !det.open;
+    if (!uuid) return;
+    if (det.open) this.colsOpen.add(uuid);
+    else this.colsOpen.delete(uuid);
   }
 
   /** The table under a chart folds behind a one-line toggle; the choice is kept per block. */
@@ -327,11 +373,12 @@ export class Interact {
     const fail = (cause: unknown) => this.deps.report(new Error('Could not copy the table as CSV.', { cause }));
     const clip = this.doc.defaultView?.navigator.clipboard;
     if (!clip) return fail(new Error('The clipboard is not available in this window.'));
-    clip.writeText(toCsv(data.result, data.query.by)).then(() => this.deps.notify(`${n} rows copied`), fail);
+    clip.writeText(toCsv(data.result, data.query.by, data.query.hide)).then(() => this.deps.notify(`${n} rows copied`), fail);
   }
 
   /** On a trace (legend entry, marker, line, band) it hides or shows that trace; elsewhere on the plot it resets the zoom. */
   private onDblClick(e: MouseEvent): void {
+    if (this.table.onDblClick(e)) return;
     const t = e.target as Element | null;
     const box = t?.closest?.('.dq-chartbox') as HTMLElement | null;
     if (!box) return;
@@ -355,6 +402,7 @@ export class Interact {
 
   /** Ctrl + wheel over a chart scales markers, lines and fonts; a plain wheel scrolls the page as usual. */
   private onWheel(e: WheelEvent): void {
+    if (this.table.onWheel(e)) return;
     if (!e.ctrlKey || !e.deltaY) return;
     const box = (e.target as Element | null)?.closest?.('.dq-chartbox') as HTMLElement | null;
     if (!box) return;
