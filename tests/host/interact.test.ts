@@ -277,7 +277,8 @@ describe('chart and side buttons', () => {
     expect(document.querySelector('.dq-chartbox')!.classList.contains('dq-big')).toBe(true);
   });
 
-  it('draws error bars for the multi-valued row', () => {
+  it('draws error bars for the multi-valued row once ± is on', () => {
+    setup('scatter', `${DSL} err:bar`);
     ui.attach('slot');
     expect(document.querySelectorAll('svg.dq-chart .dq-err')).toHaveLength(1);
   });
@@ -490,7 +491,7 @@ describe('folded table under a chart', () => {
   it('with color: only, a point marks every row of its colour', () => {
     Element.prototype.scrollIntoView = vi.fn();
     const g = [block('a', 'A\nx:: 1\ny:: 10\ng:: p'), block('b', 'B\nx:: 1\ny:: 12\ng:: p'), block('c', 'C\nx:: 3\ny:: 30\ng:: q')];
-    setup('scatter', 'x:x y:y color:g', g);
+    setup('scatter', 'x:x y:y color:g err:bar', g);
     ui.attach('slot');
     expect(document.querySelectorAll('circle.dq-pt')).toHaveLength(2);
     document.querySelector<SVGElement>('circle[data-key="p"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));

@@ -148,8 +148,8 @@ function sideHtml(inp: InlineInput, q: Query, res: QueryResult): string {
     html += select(uuid, 'y', 'Y', numeric, res.axes.ys[0]);
     // Without `color:` the points group and colour by `by:`; the blank choice says so.
     html += select(uuid, 'color', 'Color', cols, res.axes.color, q.by ? `by: ${q.by}` : 'none');
-    html += errToggle(uuid, 'bar', q.err === 'bar', '±', 'Min–max error bars');
-    html += errToggle(uuid, 'band', q.err === 'band', '▤', 'Min–max band');
+    html += errToggle(uuid, 'bar', q.err === 'bar', '±', 'Pool groups: mean and min–max error bars');
+    html += errToggle(uuid, 'band', q.err === 'band', '▤', 'Pool groups: mean and min–max band');
     html += button('reset', '⟲', 'Reset axes (or double-click the plot)') + button('expand', '⤢', 'Enlarge') + csv;
   } else if (inp.kind === 'bar') {
     html += select(uuid, 'x', 'X', cols, res.axes.x);

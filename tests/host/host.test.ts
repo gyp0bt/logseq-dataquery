@@ -101,16 +101,16 @@ describe('actions', () => {
     const api = graph();
     const text = async () => (await readMacro(api, 'm')).dsl;
     await toggleErrInMacro(api, 'm', 'bar');
-    expect(await text()).toBe('#work/nsb  sort:gre err:off');
+    expect(await text()).toBe('#work/nsb  sort:gre err:bar');
     await toggleErrInMacro(api, 'm', 'bar');
     expect(await text()).toBe('#work/nsb  sort:gre');
     await toggleErrInMacro(api, 'm', 'band');
     expect(await text()).toBe('#work/nsb  sort:gre err:band');
     await toggleErrInMacro(api, 'm', 'bar');
+    expect(await text()).toBe('#work/nsb  sort:gre err:bar');
+    await toggleErrInMacro(api, 'm', 'band');
+    await toggleErrInMacro(api, 'm', 'band');
     expect(await text()).toBe('#work/nsb  sort:gre');
-    await toggleErrInMacro(api, 'm', 'band');
-    await toggleErrInMacro(api, 'm', 'band');
-    expect(await text()).toBe('#work/nsb  sort:gre err:off');
   });
   it('a toggle on a query with a mistake says so instead of guessing', async () => {
     const api = graph();

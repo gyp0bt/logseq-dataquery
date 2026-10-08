@@ -86,7 +86,8 @@ describe('renderInline', () => {
     expect(real('scatter', 'color:seed')).toContain('<option value="seed" selected>seed</option>');
     // The next value is worked out from the macro text when clicked, not baked in here.
     const pressed = (dsl: string, t: string) => new RegExp(`data-name="err" data-toggle="${t}" aria-pressed="(true|false)"`).exec(real('scatter', dsl))![1];
-    expect([pressed('', 'bar'), pressed('', 'band')]).toEqual(['true', 'false']);
+    expect([pressed('', 'bar'), pressed('', 'band')]).toEqual(['false', 'false']);
+    expect([pressed('err:bar', 'bar'), pressed('err:bar', 'band')]).toEqual(['true', 'false']);
     expect([pressed('err:band', 'bar'), pressed('err:band', 'band')]).toEqual(['false', 'true']);
     expect([pressed('err:off', 'bar'), pressed('err:off', 'band')]).toEqual(['false', 'false']);
     expect(html).not.toContain('data-name="err" data-value');

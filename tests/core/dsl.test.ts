@@ -14,7 +14,7 @@ const err = (t: string) => {
 
 describe('parseQuery', () => {
   it('empty text is the empty query', () =>
-    expect(ok('  ')).toEqual({ refs: [], conds: [], ys: [], labels: false, err: 'bar' }));
+    expect(ok('  ')).toEqual({ refs: [], conds: [], ys: [], labels: false, err: 'off' }));
 
   it('reads every kind of term', () => {
     expect(ok('#work/nsb seed==0 gre-interp<0 x:gre-thin y:gre-thick color:seed sort:-r2 by:run labels:on err:band done?')).toEqual({
@@ -111,10 +111,11 @@ describe('setSetting (Review Focus 3)', () => {
 
 describe('toggleErr', () => {
   it('± and ▤ are two exclusive on/off toggles', () => {
-    expect(toggleErr('bar', 'bar')).toBe('off');
-    expect(toggleErr('off', 'bar')).toBeNull();
-    expect(toggleErr('band', 'bar')).toBeNull();
-    expect(toggleErr('band', 'band')).toBe('off');
+    // Off by default (every row drawn); each button turns its mode on, or off again.
+    expect(toggleErr('off', 'bar')).toBe('bar');
+    expect(toggleErr('bar', 'bar')).toBeNull();
+    expect(toggleErr('band', 'bar')).toBe('bar');
+    expect(toggleErr('band', 'band')).toBeNull();
     expect(toggleErr('off', 'band')).toBe('band');
     expect(toggleErr('bar', 'band')).toBe('band');
   });

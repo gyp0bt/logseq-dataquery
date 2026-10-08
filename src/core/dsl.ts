@@ -26,7 +26,8 @@ export type SettingName = 'x' | 'y' | 'color' | 'sort' | 'by' | 'labels' | 'err'
 
 const SETTINGS: readonly SettingName[] = ['x', 'y', 'color', 'sort', 'by', 'labels', 'err'];
 
-const emptyQuery = (): Query => ({ refs: [], conds: [], ys: [], labels: false, err: 'bar' });
+// `err:off`, the default, draws every row as its own point.
+const emptyQuery = (): Query => ({ refs: [], conds: [], ys: [], labels: false, err: 'off' });
 
 class DslSyntaxError extends Error {
   constructor(message: string, readonly col: number) {
@@ -259,11 +260,10 @@ export function removeY(text: string, col: string): string {
 
 /**
  * The `±` (error bars) and `▤` (band) buttons are two exclusive on/off toggles over `err:`.
- * Returns the new `err:` value, or null to remove the setting (bars, the default).
+ * Returns the new `err:` value, or null to remove the setting (every row drawn, the default).
  */
 export function toggleErr(current: ErrMode, button: 'bar' | 'band'): string | null {
-  if (button === 'bar') return current === 'bar' ? 'off' : null;
-  return current === 'band' ? 'off' : 'band';
+  return current === button ? null : button;
 }
 
 /** Logseq hands renderer arguments split on commas; put them back together. */

@@ -148,18 +148,19 @@ const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
 
 /**
  * Groups rows for the scatter plot. With a group key (`color`, else `by`), rows sharing its value
- * form one group; without, each row is its own group. Inside a group the y numbers are pooled per distinct x (a row sits at
+ * form one group; without, or with `pool` off, each row is its own group. Inside a group the y numbers are pooled per distinct x (a row sits at
  * the mean of its x cell; every number of its y cell counts), and points come sorted by x.
  */
-export function scatterGroups(rows: Row[], plot: { x: string; y: string }, groupKey?: string): ScatterGroup[] {
+export function scatterGroups(rows: Row[], plot: { x: string; y: string }, groupKey?: string, pool = true): ScatterGroup[] {
   const groups = new Map<string, { key?: string; label: string; first: Row; at: Map<number, { ys: number[]; uuid: string }> }>();
   rows.forEach((r, i) => {
     const sx = cellStats(r.values[plot.x]);
     const ly = toList(r.values[plot.y]);
     if (!sx || !ly) return;
     const key = groupKey ? catOf(r.values[groupKey]) : undefined;
-    const id = key ?? `#${i}`;
-    if (!groups.has(id)) groups.set(id, { key, label: key ?? rowLabel(r), first: r, at: new Map() });
+    // Unpooled (`err:off`), every row is its own group but keeps its group key for colour and clicks.
+    const id = pool && key !== undefined ? key : `#${i}`;
+    if (!groups.has(id)) groups.set(id, { key, label: (pool && key) || rowLabel(r), first: r, at: new Map() });
     const g = groups.get(id)!;
     const x = Number(sx.mean.toPrecision(12));
     if (!g.at.has(x)) g.at.set(x, { ys: [], uuid: r.sources[0].uuid });
@@ -178,7 +179,8 @@ export function scatterSvg(rows: Row[], plot: ScatterSpec, types: Record<string,
   const { L, T, PW, PH, H, B, s } = b;
   // Rows group by `color`, else by `by`: a group pools its y per x (mean + min–max) and is one trace.
   const ckey = plot.color ?? by;
-  const groups = scatterGroups(rows, plot, ckey);
+  // Without `err:` every row is drawn as it is; `±` and `▤` pool each group per x.
+  const groups = scatterGroups(rows, plot, ckey, plot.err !== 'off');
   if (!groups.length) return empty(`No rows have numeric ${plot.x} and ${plot.y}.`);
   const traceOf = (g: ScatterGroup) => (ckey ? `${ckey} = ${catOf(g.first.values[ckey])}` : undefined);
   const hidden = new Set(opts.hidden ?? []);

@@ -186,6 +186,37 @@ describe('several values in one row', () => {
   });
 });
 
+describe('scatter draws every row until ± or ▤ is on', () => {
+  const rs = [
+    row('a1', { x: '1', y: '1', g: 'A', run: 'r1' }),
+    row('a2', { x: '1', y: '3', g: 'A', run: 'r1' }),
+    row('a3', { x: '2', y: '2/4', g: 'A', run: 'r1' }),
+    row('b1', { x: '1', y: '5', g: 'B', run: 'r2' }),
+  ];
+  const t = { x: 'number', y: 'numlist', g: 'string', run: 'string' } as const;
+  it('err:off (the default): one point per row, coloured by its group, no pooling, no line, no bars', () => {
+    const c = scatterSvg(rs, { x: 'x', y: 'y', color: 'g', labels: false, err: 'off' }, t);
+    expect(c.html.match(/<circle /g)).toHaveLength(4);
+    expect(c.html).not.toContain('dq-line');
+    expect(c.html).not.toContain('dq-err');
+    expect(c.legend.filter((l) => l.trace).map((l) => l.label)).toEqual(['g = A', 'g = B']);
+    expect(c.html.match(/fill="var\(--dq-c0\)"[^>]*data-trace="g = A"/g)).toHaveLength(3);
+    // A cell with several numbers sits at its mean, without a bar.
+    expect(c.html).toContain('a3\nx: 2\ny: mean 3');
+  });
+  it('by: groups the colours the same way, still one point per block', () => {
+    const c = scatterSvg(rs, { x: 'x', y: 'y', labels: false, err: 'off' }, t, 'run');
+    expect(c.html.match(/<circle /g)).toHaveLength(4);
+    expect(c.legend.filter((l) => l.trace).map((l) => l.label)).toEqual(['run = r1', 'run = r2']);
+  });
+  it('err:bar pools each group per x: mean, min–max bar and a line through the means', () => {
+    const c = scatterSvg(rs, { x: 'x', y: 'y', color: 'g', labels: false, err: 'bar' }, t);
+    expect(c.html.match(/<circle /g)).toHaveLength(3);
+    expect(c.html.match(/class="dq-line"/g)).toHaveLength(1);
+    expect(c.html.match(/class="dq-err"/g)).toHaveLength(2);
+  });
+});
+
 describe('scatter with by:', () => {
   const merged = [row('blk1', { run: 'r1', x: '1', y: '2' }), row('blk2', { run: 'r2', x: '2', y: '3' })];
   const mt = { run: 'string', x: 'number', y: 'number', seed: 'category' } as const;
@@ -322,9 +353,9 @@ describe('scatter groups by by:', () => {
     expect(c.html.match(/class="dq-err"/g)).toHaveLength(1);
     expect(c.html).toMatch(/<g class="dq-err" data-trace="run = r1"/);
   });
-  it('err:off keeps the line of a multi-x group but draws no bar or band', () => {
+  it('err:off draws every block as its own point: no line, bar or band', () => {
     const c = draw([...one, ...many], 'off');
-    expect(c.html).toContain('class="dq-line"');
+    expect(c.html).not.toContain('class="dq-line"');
     expect(c.html).not.toContain('dq-err');
     expect(c.html).not.toContain('dq-band');
   });
@@ -362,10 +393,10 @@ describe('scatter groups by color: (no by:)', () => {
     expect(xs).toEqual([...xs].sort((m, n) => m - n));
     expect(xs).toHaveLength(3);
   });
-  it('err:band bands the multi-x colour group; err:off keeps its line only', () => {
+  it('err:band bands the multi-x colour group; err:off draws no line', () => {
     expect(draw('band', 'g').html.match(/class="dq-band"/g)).toHaveLength(1);
     const off = draw('off', 'g').html;
-    expect(off).toContain('class="dq-line"');
+    expect(off).not.toContain('class="dq-line"');
     expect(off).not.toContain('dq-err');
   });
   it('without by: or color: each row is its own point', () => {
