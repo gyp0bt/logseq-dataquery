@@ -141,6 +141,25 @@ describe('renderInline', () => {
     expect(draw('by:run y:gre')).toMatch(/data-name="x"[^>]*>.*<option value="run">run<\/option>/);
   });
 
+  it('bar Color select lists every column with the by key; color:KEY splits bars, with the by key from the unmerged blocks', () => {
+    const bs: SourceBlock[] = [
+      { ...blocks[0], uuid: 'p', content: 'P\nrun:: r1\ngre:: 1\nseed:: 0' },
+      { ...blocks[0], uuid: 'q', content: 'Q\nrun:: r1\ngre:: 3\nseed:: 0' },
+      { ...blocks[0], uuid: 's', content: 'S\nrun:: r2\ngre:: 2\nseed:: 1' },
+    ];
+    const draw = (dsl: string) => {
+      const p = parseQuery(dsl);
+      if (!p.ok) throw new Error(p.error.message);
+      return view('bar', dsl, runQuery(p.query, 'bar', { blocks: bs, types: TYPES, macroUuid: 'm' }));
+    };
+    const sel = /data-name="color"[^>]*>(.*?)<\/select>/.exec(draw('by:run x:seed y:gre'))![1];
+    expect(sel).toBe('<option value="" selected>none</option><option value="run">run</option><option value="gre">gre</option><option value="seed">seed</option>');
+    const html = draw('by:run x:seed y:gre color:run');
+    // Unmerged: r1's two blocks make one bar with a whisker.
+    expect(html).toContain('data-tip="seed: 0\nrun: r1\ngre: mean 2.000\nmin 1 · max 3 · n=2"');
+    expect(html).toContain('data-trace="run = r2"');
+  });
+
   it('the scatter Color select offers the by key, whatever its type', () => {
     const html = real('scatter', 'by:run x:thick y:gre');
     const sel = /data-name="color"[^>]*>(.*?)<\/select>/.exec(html)![1];

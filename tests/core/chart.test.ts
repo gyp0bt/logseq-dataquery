@@ -417,3 +417,47 @@ describe('bar chart width with several y columns', () => {
     expect(width(['a', 'b', 'd'])).toBeGreaterThan(width(['a', 'b']));
   });
 });
+
+describe('bar chart colour grouping (color:)', () => {
+  const rs = [
+    row('a', { m: 'cnn', v: '1', s: '0' }),
+    row('b', { m: 'cnn', v: '3', s: '0' }),
+    row('c', { m: 'cnn', v: '5', s: '1' }),
+    row('d', { m: 'gnn', v: '2', s: '1' }),
+    row('e', { m: 'gnn', v: '4', w: '9' }),
+  ];
+  const t = { m: 'string', v: 'number', w: 'number', s: 'category' } as const;
+  const bars = (html: string) => [...html.matchAll(/<rect class="dq-bar"[^>]*data-trace="([^"]+)"/g)].map((m) => m[1]);
+  it('splits each category into one bar per colour value: mean, min, max and n of those rows', () => {
+    const g = barGroups(rs, { x: 'm', ys: ['v'], color: 's' }, t);
+    expect(g.map((x) => x.cat)).toEqual(['cnn', 'gnn']);
+    // Series: s = 0, s = 1, s = (none).
+    expect(g[0].stats).toEqual([{ mean: 2, min: 1, max: 3, n: 2 }, { mean: 5, min: 5, max: 5, n: 1 }, null]);
+    expect(g[1].stats).toEqual([null, { mean: 2, min: 2, max: 2, n: 1 }, { mean: 4, min: 4, max: 4, n: 1 }]);
+  });
+  it('draws the bars side by side with a legend entry per colour value; hover names x, colour and the stats', () => {
+    const c = barSvg(rs, { x: 'm', ys: ['v'], color: 's' }, t);
+    expect(bars(c.html)).toEqual(['s = 0', 's = 1', 's = 1', 's = (none)']);
+    expect(c.legend.filter((l) => l.trace).map((l) => [l.label, l.color])).toEqual([
+      ['s = 0', 'var(--dq-c0)'], ['s = 1', 'var(--dq-c1)'], ['s = (none)', 'var(--dq-c2)'],
+    ]);
+    expect(c.html).toContain('data-tip="m: cnn\ns: 0\nv: mean 2.000\nmin 1 · max 3 · n=2"');
+  });
+  it('several y columns give y × colour series, labelled y · colour', () => {
+    const c = barSvg(rs, { x: 'm', ys: ['v', 'w'], color: 's' }, t);
+    expect(c.legend.filter((l) => l.trace).map((l) => l.label)).toEqual(['v · 0', 'v · 1', 'v · (none)', 'w · 0', 'w · 1', 'w · (none)']);
+    expect(bars(c.html)).toContain('w · (none)');
+  });
+  it('a double-click hides one colour series', () => {
+    const c = barSvg(rs, { x: 'm', ys: ['v'], color: 's' }, t, { hidden: ['s = 1'] });
+    expect(bars(c.html)).toEqual(['s = 0', 's = (none)']);
+    expect(c.legend.find((l) => l.label === 's = 1')!.off).toBe(true);
+  });
+  it('each category grows by the bars it holds, so labels and bars do not overlap', () => {
+    const size = { w: 200, h: 360 };
+    const w = (color?: string) => Number(/width="(\d+)"/.exec(barSvg(rs, { x: 'm', ys: ['v'], color }, t, { size }).html)![1]);
+    expect(w()).toBe(240);
+    // Margins 64 + 20, two categories of 56 px plus 24 px for each bar past the first (3 colours).
+    expect(w('s')).toBe(64 + 20 + 2 * (56 + 2 * 24));
+  });
+});

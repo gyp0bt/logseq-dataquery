@@ -82,10 +82,10 @@ export function chartOf(d: ViewData, opts: ChartOpts = {}): Chart | null {
   if (kind === 'table' || !x || !ys.length) return null;
   if (kind === 'scatter')
     return scatterSvg(res.chartRows ?? res.rows, { x, y: ys[0], color, labels: q.labels, err: q.err }, res.types, q.by, opts);
-  // With `x:` on the `by` key each category is one `by` value; its bar spans that value's blocks
+  // With `x:` or `color:` on the `by` key each bar is one `by` value; it spans that value's blocks
   // (unmerged), so the whisker shows their min–max instead of a single merged row.
-  const rows = q.by && x === q.by ? res.chartRows ?? res.rows : res.rows;
-  return barSvg(rows, { x, ys }, res.types, opts);
+  const rows = q.by && (x === q.by || color === q.by) ? res.chartRows ?? res.rows : res.rows;
+  return barSvg(rows, { x, ys, color }, res.types, opts);
 }
 
 /** The caret message shown under the query field. */
@@ -154,6 +154,8 @@ function sideHtml(inp: InlineInput, q: Query, res: QueryResult): string {
   } else if (inp.kind === 'bar') {
     html += select(uuid, 'x', 'X', cols, res.axes.x);
     html += yChips(uuid, q, res.axes.ys, numeric);
+    // `color:` splits each category into one bar per value.
+    html += select(uuid, 'color', 'Color', cols, res.axes.color, 'none');
     html += button('expand', '⤢', 'Enlarge') + csv;
   } else html += csv;
   return `<div class="dq-side" data-on-click="dqNoop" data-macro="${esc(uuid)}">${html}</div>`;
