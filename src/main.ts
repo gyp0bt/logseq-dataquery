@@ -73,6 +73,12 @@ async function main(): Promise<void> {
       report,
       notify: (msg) => void logseq.UI.showMsg(msg, 'success'),
       resume: () => void views.resume().catch(report),
+      leaveEditing: () => {
+        // Synchronous, in Logseq's own window: the async plugin API would arrive after the focus moved.
+        const host = parent as unknown as { logseq?: { api?: { exit_editing_mode?: (select: boolean) => void } } };
+        const active = parent.document.activeElement;
+        if (active?.matches('textarea') && active.id.startsWith('edit-block')) host.logseq?.api?.exit_editing_mode?.(false);
+      },
     });
     const off = interact.install();
     logseq.beforeunload(async () => off());

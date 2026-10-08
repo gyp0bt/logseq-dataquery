@@ -12,10 +12,29 @@ export interface InteractDeps {
   notify(msg: string): void;
   /** A field of a view lost the focus: paint what was held back while it was being typed in. */
   resume?(): void;
+  /**
+   * A press is about to focus one of our fields. Logseq leaves a block's raw editing only through
+   * its own outside-click handler, which never hears this press, so the host ends it here, while
+   * the block's textarea still has the focus (Logseq ignores the request once it has not).
+   */
+  leaveEditing?(): void;
 }
 
 /** Fields typed into inside a view; a repaint would wipe them, so it waits until they are left. */
-export const FIELD_SELECTOR = 'input.dq-dsl, input.dq-axin';
+export const FIELD_SELECTOR = 'input.dq-dsl, input.dq-axin, input.dq-cellin, input.dq-keyin';
+
+/**
+ * Events a field keeps from Logseq. In Logseq 0.10.15 the block content's React handlers (at the
+ * root) clear the DOM selection on mouseup while a block is selected, which takes the caret out of
+ * the field so typing goes nowhere, and its mousedown and key handlers open or leave raw editing.
+ * A listener on the window in the capture phase runs before all of them (the document's and the
+ * root's), so these events stop there; nothing cancels their default, so the field still works.
+ */
+export const SHIELDED_EVENTS = [
+  'keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend',
+  'mousedown', 'mouseup', 'click', 'dblclick', 'pointerdown', 'pointerup', 'selectstart', 'copy', 'cut', 'paste',
+] as const;
+const RELEASES = new Set(['mouseup', 'pointerup', 'click']);
 
 /**
  * What a chart shows besides the macro: zoom, enlarged, Ctrl+wheel scale and traces hidden by a
@@ -48,6 +67,8 @@ export class Interact {
   private pan?: { el: HTMLElement; x: number };
   /** Where the last mouse press landed, to tell a click from a drag that ended elsewhere. */
   private pressed?: Element | null;
+  /** A key handled in a field that then lost the focus: its keyup lands on the body, and is ours too. */
+  private swallowKeyUp?: string;
   private axDrag?: { box: HTMLElement; ax: 'x' | 'y'; end: AxisEnd; d: Domain; a: NonNullable<ReturnType<typeof areaOf>>; from: { x: number; y: number }; cx: number; cy: number; moved: boolean };
 
   constructor(private doc: Document, private deps: InteractDeps) {}
@@ -56,7 +77,6 @@ export class Interact {
     const on: Array<[string, (e: Event) => void, boolean]> = [
       // Capture phase: Logseq's block handlers (React 17, delegated at its root) stop the
       // propagation of mouseover and others, so a bubbling listener on the document never hears them.
-      ['keydown', (e) => this.onKey(e as KeyboardEvent), true],
       ['pointerdown', (e) => (this.pressed = e.target as Element | null), true],
       ['mousedown', (e) => (this.pressed = e.target as Element | null), true],
       ['focusout', (e) => this.onFocusOut(e as FocusEvent), true],
@@ -82,11 +102,15 @@ export class Interact {
     };
     const bound = on.map(([t, f, cap]) => [t, guard(f), cap] as const);
     for (const [t, f, cap] of bound) this.doc.addEventListener(t, f, cap);
+    const win: EventTarget = this.doc.defaultView ?? this.doc;
+    const shield = guard((e) => this.shield(e));
+    for (const t of SHIELDED_EVENTS) win.addEventListener(t, shield, true);
     // Ctrl + wheel must cancel the browser/Logseq zoom, which a passive listener cannot do.
     const wheel = guard((e) => this.onWheel(e as WheelEvent));
     this.doc.addEventListener('wheel', wheel, { passive: false });
     return () => {
       for (const [t, f, cap] of bound) this.doc.removeEventListener(t, f, cap);
+      for (const t of SHIELDED_EVENTS) win.removeEventListener(t, shield, true);
       this.doc.removeEventListener('wheel', wheel);
       this.tipEl?.remove();
       this.tipEl = undefined;
@@ -170,15 +194,33 @@ export class Interact {
 
   // ---- query field ----
 
+  /** Window capture: events aimed at one of our fields are handled here and go no further. */
+  private shield(e: Event): void {
+    if (e.type === 'keyup' && this.swallowKeyUp !== undefined && (e as KeyboardEvent).key === this.swallowKeyUp) {
+      this.swallowKeyUp = undefined;
+      return stopAll(e);
+    }
+    const t = e.target as Element | null;
+    const inField = !!t?.closest?.(FIELD_SELECTOR);
+    // A press in a field released outside it (selecting text past its end) is the field's too.
+    const fromField = RELEASES.has(e.type) && !!this.pressed?.closest?.(FIELD_SELECTOR);
+    if (!inField && !fromField) return;
+    if (e.type === 'mousedown' || e.type === 'pointerdown') this.pressed = t;
+    if (e.type === 'mousedown' && inField) this.deps.leaveEditing?.();
+    if (e.type === 'keydown') this.onKey(e as KeyboardEvent);
+    stopAll(e);
+  }
+
   private onKey(e: KeyboardEvent): void {
     const axIn = (e.target as Element | null)?.closest?.('input.dq-axin') as HTMLInputElement | null;
     if (axIn) return this.onAxisKey(axIn, e);
     const input = (e.target as Element | null)?.closest?.('input.dq-dsl') as HTMLInputElement | null;
     if (!input) return;
-    // Keys typed here belong to the field, not to Logseq's shortcuts.
-    e.stopPropagation();
     if (e.isComposing || e.keyCode === 229) return; // IME confirmation, not a submit
     if (e.key === 'Escape') {
+      // Only our field reverts: no raw editing, no block selection.
+      e.preventDefault();
+      this.swallowKeyUp = 'Escape';
       input.value = input.defaultValue;
       this.showError(input, '');
       input.blur();
@@ -191,6 +233,7 @@ export class Interact {
         return;
       }
       this.showError(input, '');
+      this.swallowKeyUp = 'Enter';
       // Leave the field first: while it has the focus, repaints (the saved query among them) wait.
       input.blur();
       this.deps.submit(input.dataset.macro!, dsl).catch((err) => this.deps.report(err));
@@ -386,14 +429,14 @@ export class Interact {
   }
 
   private onAxisKey(input: HTMLInputElement, e: KeyboardEvent): void {
-    // Keys typed here belong to the box, not to Logseq's shortcuts.
-    e.stopPropagation();
     if (e.isComposing || e.keyCode === 229) return;
     if (e.key === 'Escape') {
       e.preventDefault();
+      this.swallowKeyUp = 'Escape';
       input.remove();
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      this.swallowKeyUp = 'Enter';
       const box = input.closest<HTMLElement>('.dq-chartbox');
       const text = input.value.trim();
       const v = Number(text);
@@ -525,6 +568,11 @@ export class Interact {
     };
     this.draw(box);
   }
+}
+
+function stopAll(e: Event): void {
+  e.stopPropagation();
+  e.stopImmediatePropagation();
 }
 
 const nums = (s: string | null | undefined) => (s ? s.split(',').map(Number) : null);
