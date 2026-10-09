@@ -581,3 +581,15 @@ describe('pressing into a field while Logseq edits a block', () => {
     expect(order).toEqual(['edit-block-1-x']);
   });
 });
+
+describe('table images', () => {
+  it('marks an image that failed to load and names the URL it tried', () => {
+    const img = document.createElement('img');
+    img.className = 'dq-img';
+    img.setAttribute('src', 'assets:///home/u/g/assets/a%20b.png');
+    document.querySelector('#slot')!.appendChild(img);
+    img.dispatchEvent(new Event('error'));
+    expect(img.classList.contains('dq-img-broken')).toBe(true);
+    expect(img.title).toBe('Image not found: assets:///home/u/g/assets/a b.png');
+  });
+});

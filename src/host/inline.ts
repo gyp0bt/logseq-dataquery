@@ -1,6 +1,7 @@
 import type { ChartOpts } from '../core/chart';
 import { parseQuery, type Kind } from '../core/dsl';
 import { renderInline, type InlineInput, type ViewData } from '../core/view';
+import type { AssetScheme } from '../core/images';
 import { errorText } from './actions';
 import type { Engine } from './engine';
 
@@ -22,6 +23,7 @@ export interface InlineHooks {
   busy?(slot: string): boolean;
   /** The graph folder, to resolve `../assets/…` images in table cells. */
   graphPath?(): string | undefined;
+  assetScheme?(): AssetScheme;
   /** Columns added with the table's `+` that no block holds yet. */
   extraCols?(uuid: string): string[];
 }
@@ -76,7 +78,7 @@ export class InlineViews {
     let view: ViewData | undefined;
     try {
       const ev = await this.engine.evaluate(dsl, kind, uuid);
-      input = { kind, macroUuid: uuid, dsl, ...ev, graphPath: this.hooks.graphPath?.(), extraCols: this.hooks.extraCols?.(uuid) };
+      input = { kind, macroUuid: uuid, dsl, ...ev, graphPath: this.hooks.graphPath?.(), assetScheme: this.hooks.assetScheme?.(), extraCols: this.hooks.extraCols?.(uuid) };
       if (ev.result && ev.parsed.ok) view = { kind, query: ev.parsed.query, result: ev.result };
     } catch (e) {
       console.error('[dataquery] could not render the query view', e);

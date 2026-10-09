@@ -100,6 +100,8 @@ export class Interact {
       ['mousedown', (e) => this.stopMiddle(e as MouseEvent), true],
       ['mouseup', (e) => this.stopMiddle(e as MouseEvent), true],
       ['auxclick', (e) => this.stopMiddle(e as MouseEvent), true],
+      // `error` doesn't bubble, so only a capture listener sees a table image that failed to load.
+      ['error', (e) => this.onImgError(e), true],
     ];
     const guard = (f: (e: Event) => void) => (e: Event) => {
       try {
@@ -513,6 +515,21 @@ export class Interact {
   }
 
   // ---- table pan ----
+
+  /** A table image that failed to load shows as a marked box naming the URL it tried, so the cause is visible. */
+  private onImgError(e: Event): void {
+    const img = e.target as HTMLImageElement | null;
+    if (!img || img.tagName !== 'IMG' || !img.classList.contains('dq-img')) return;
+    img.classList.add('dq-img-broken');
+    const src = img.getAttribute('src') ?? '';
+    let shown = src;
+    try {
+      shown = decodeURI(src);
+    } catch {
+      // A malformed %-escape: show the URL as written.
+    }
+    img.title = `Image not found: ${shown}`;
+  }
 
   private stopMiddle(e: MouseEvent): void {
     if (e.button === 1 && (e.target as Element | null)?.closest?.('.dq-tbl')) e.preventDefault();

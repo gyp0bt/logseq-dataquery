@@ -111,6 +111,8 @@
 /* Table images: one height for the whole table (--dq-img, set from img:), aspect ratio kept. */
 .dq-img { display: inline-block; max-height: var(--dq-img, 64px); max-width: calc(var(--dq-img, 64px) * 4); width: auto; height: auto; vertical-align: middle; cursor: zoom-in; border-radius: 3px; }
 .dq-img + .dq-img { margin-left: 4px; }
+/* Failed to load: a dashed box showing the alt text; the title names the URL that was tried. */
+.dq-img-broken { min-width: 3em; min-height: 1.6em; border: 1px dashed var(--dq-plot-line, #c00); cursor: help; }
 .dq-lightbox { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.75); cursor: zoom-out; }
 .dq-lightbox img { max-width: 92vw; max-height: 92vh; object-fit: contain; background: #fff; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5); }
 /* Cell editing and the + column. */

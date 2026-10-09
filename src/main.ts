@@ -1,5 +1,6 @@
 import '@logseq/libs';
 import { joinMacroArgs, type Kind } from './core/dsl';
+import type { AssetScheme } from './core/images';
 import { buildMacro, LEGACY_TYPE, MACRO_KINDS } from './core/macroText';
 import { renderLegacy } from './core/view';
 import { applyControl, errorText, jumpTo, readMacro, saveCell, saveDsl, setImgInMacro, type SetEvent } from './host/actions';
@@ -39,12 +40,22 @@ async function main(): Promise<void> {
   const engine = new Engine(api, typesPage);
   logseq.provideStyle(tokensCss + '\n' + inlineCss);
 
-  // Asked once: `../assets/x.png` in a table cell loads from `file://<graph>/assets/x.png`.
+  // `../assets/x.png` in a table cell loads from `<graph>/assets/x.png`. Logseq's desktop app serves
+  // local files through its own `assets://` protocol (as its own image blocks do); a browser uses file://.
   let graphPath: string | undefined;
+  const readGraph = async () => {
+    try {
+      graphPath = (await logseq.App.getCurrentGraph())?.path ?? undefined;
+    } catch (e) {
+      console.warn('[dataquery] could not read the graph folder; asset images in tables will show as text', e);
+    }
+  };
+  await readGraph();
+  let assetScheme: AssetScheme = 'file';
   try {
-    graphPath = (await logseq.App.getCurrentGraph())?.path ?? undefined;
+    if (/Electron/i.test(parent.navigator.userAgent)) assetScheme = 'assets';
   } catch (e) {
-    console.warn('[dataquery] could not read the graph folder; asset images in tables will show as text', e);
+    console.warn('[dataquery] could not read the host user agent; using file:// for images', e);
   }
   /** Columns added with the table's `+`, per macro block, until a value is written. */
   const extra = new Map<string, string[]>();
@@ -75,6 +86,7 @@ async function main(): Promise<void> {
       return !!active?.matches(FIELD_SELECTOR) && !!slotEl(slot)?.contains(active);
     },
     graphPath: () => graphPath,
+    assetScheme: () => assetScheme,
     extraCols: (uuid) => extra.get(uuid) ?? [],
   });
 
@@ -132,6 +144,11 @@ async function main(): Promise<void> {
       engine.invalidate();
       void views.refreshAll();
     }, 300);
+  });
+
+  logseq.App.onCurrentGraphChanged(() => {
+    engine.invalidate();
+    void readGraph().then(() => views.refreshAll());
   });
 
   logseq.onSettingsChanged(() => {
