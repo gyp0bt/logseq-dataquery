@@ -1,7 +1,7 @@
 import { barSvg, legendHtml, scatterSvg, type Chart, type ChartOpts } from './chart';
 import { IMG_DEFAULT, type Kind, type ParseResult, type Query } from './dsl';
 import { esc } from './html';
-import { cellHtml, imagePieces } from './images';
+import { cellHtml, imagePieces, type AssetScheme } from './images';
 import { isAxisNumeric, typeOf, type QueryResult } from './query';
 import { canonical, rowLabel, type Row } from './rows';
 import { cellMean, isNumericType, type ValueType } from './types';
@@ -19,11 +19,12 @@ export interface InlineInput {
   tableOpen?: boolean;
   /** The graph folder, to resolve `../assets/…` images in cells. */
   graphPath?: string;
+  assetScheme?: AssetScheme;
   /** Columns added with the table's `+` that no block holds yet (transient, kept by the host). */
   extraCols?: string[];
 }
 
-export interface TableOpts { graphPath?: string; extraCols?: string[] }
+export interface TableOpts { graphPath?: string; assetScheme?: AssetScheme; extraCols?: string[] }
 
 /** The data columns the table shows: not hidden, plus the transient ones from `+`. */
 export function shownCols(result: QueryResult, q: Query, extra: string[] = []): string[] {
@@ -76,7 +77,7 @@ export function tableHtml(result: QueryResult, q: Query, uuid: string, opts: Tab
           const cls = [alignRight(t) ? 'dq-num' : '', cellClass(t, v), r.conflicts[k] ? 'dq-conflict' : ''].filter(Boolean).join(' ');
           const alt = r.conflicts[k] ? ` title="${esc(r.conflicts[k].map((c) => `${c.value} (${c.pageTitle})`).join(' / '))}"` : '';
           // `data-col` + the row's `data-row` let a double-click find the block to edit.
-          return `<td class="${cls}" data-col="${esc(k)}"${alt}>${cellHtml(v ?? '', opts.graphPath)}${r.conflicts[k] ? '<sup>⚠</sup>' : ''}</td>`;
+          return `<td class="${cls}" data-col="${esc(k)}"${alt}>${cellHtml(v ?? '', opts.graphPath, opts.assetScheme)}${r.conflicts[k] ? '<sup>⚠</sup>' : ''}</td>`;
         })
         .join('');
       // A chart point finds its rows by the value of its group key: `color` (every row of that
@@ -243,7 +244,7 @@ export function renderInline(inp: InlineInput): string {
     const inner = c ? `<div class="dq-plot">${c.html}</div>${legendHtml(c.legend)}` : `<p class="dq-empty">${CHART_HINT[inp.kind]}</p>`;
     chart = `<div class="dq-chartbox" data-on-click="dqNoop" data-macro="${uuid}">${inner}</div>`;
   }
-  const tbl = tableHtml(res, q, inp.macroUuid, { graphPath: inp.graphPath, extraCols: inp.extraCols });
+  const tbl = tableHtml(res, q, inp.macroUuid, { graphPath: inp.graphPath, assetScheme: inp.assetScheme, extraCols: inp.extraCols });
   const table = inp.kind === 'table' ? tbl : foldedTable(tbl, res.rows.length, !!inp.tableOpen);
   const notes = res.warnings.map((w) => `<p class="dq-note">${esc(w)}</p>`).join('');
   return root(false, meta, `<div class="dq-body"><div class="dq-main">${chart}${table}${notes}</div>${sideHtml(inp, q, res)}</div>`);

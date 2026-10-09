@@ -22,6 +22,16 @@ describe('imagePieces', () => {
 });
 
 describe('resolveImageSrc', () => {
+  it('uses Logseq\'s assets:// protocol when asked (the desktop app)', () => {
+    expect(resolveImageSrc('../assets/x.png', '/home/u/graph', 'assets')).toBe('assets:///home/u/graph/assets/x.png');
+    expect(resolveImageSrc('/tmp/p.png', undefined, 'assets')).toBe('assets:///tmp/p.png');
+    expect(resolveImageSrc('assets:///home/u/g/a.png', undefined)).toBe('assets:///home/u/g/a.png');
+  });
+  it('turns Windows graph folders and paths into URLs without encoding the drive', () => {
+    expect(resolveImageSrc('../assets/x.png', 'C:\\Users\\u\\graph', 'assets')).toBe('assets:///C:/Users/u/graph/assets/x.png');
+    expect(resolveImageSrc('C:\\pics\\a b.png', undefined)).toBe('file:///C:/pics/a%20b.png');
+    expect(resolveImageSrc('../assets/x.png', 'D:/g/')).toBe('file:///D:/g/assets/x.png');
+  });
   const g = '/home/u/graph';
   it('resolves Logseq asset paths against the graph folder', () => {
     expect(resolveImageSrc('../assets/x.png', g)).toBe('file:///home/u/graph/assets/x.png');
