@@ -18,6 +18,22 @@ describe('blockToRow', () => {
   });
 });
 
+describe('blockToRow labels and formulas', () => {
+  it('a block with no title of its own takes its parent block\'s title', () => {
+    expect(row(block('a', 'id:: abc\nk:: v', { parentTitle: 'CheckItem1' })).title).toBe('CheckItem1');
+    expect(row(block('a', 'Own\nk:: v', { parentTitle: 'CheckItem1' })).title).toBe('Own');
+  });
+  it('evaluates = properties from the other cells of the same block', () => {
+    const r = row(block('a', 'T\nx:: 2\ny:: 3\nz:: =x*y'));
+    expect(r.values.z).toBe('6');
+    expect(r.formulas).toEqual({ z: '=x*y' });
+  });
+  it('keeps a row whose only property is a failing formula', () => {
+    const r = row(block('a', 'T\nz:: =nope+1'));
+    expect(r.errors?.z).toBeTruthy();
+  });
+});
+
 describe('mergeRows', () => {
   const older = row(block('old', 'run:: r1\ngre:: 1.72\nseed:: 0', { pageTitle: 'Sep 27th, 2026', journalDay: 20260927 }));
   const newer = row(block('new', 'run:: r1\ngre:: 1.27\nseed:: 0.0\nextra:: x', { pageTitle: 'Sep 28th, 2026', journalDay: 20260928 }));

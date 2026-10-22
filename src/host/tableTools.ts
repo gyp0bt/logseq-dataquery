@@ -1,5 +1,6 @@
 import { IMG_DEFAULT, IMG_MAX, IMG_MIN } from '../core/dsl';
 import { esc } from '../core/html';
+import { insertPick, stepPick, type RefPick } from '../core/formula';
 import { cellTarget, validatePropKey } from '../core/rows';
 import type { ViewData } from '../core/view';
 
@@ -12,6 +13,8 @@ export interface TableDeps {
   saveCell?(blockUuid: string, key: string, value: string): Promise<void>;
   /** Show a column added with `+` until a block holds it (transient: the macro does not change). */
   addColumn?(macroUuid: string, key: string): void;
+  /** Add a row below the last one (a block under the last row's block); resolves to its uuid. */
+  addRow?(macroUuid: string): Promise<string | undefined>;
   /** Ctrl+wheel over a table image: write the height it ended on as `img:`. */
   setImg?(macroUuid: string, px: number): Promise<void>;
 }
@@ -21,7 +24,10 @@ export const IMG_WRITE_DELAY = 400;
 const IMG_WHEEL_STEP = 1.1;
 
 /** An open cell or `+` editor: what to put back if it is left without Enter. */
-interface Editing { input: HTMLInputElement; cell: HTMLElement; html: string; done: boolean }
+interface Editing { input: HTMLInputElement; cell: HTMLElement; html: string; done: boolean; pick: RefPick | null; picked?: HTMLElement }
+
+/** Where the cursor goes when an editor is left with a key. */
+export type Move = 'up' | 'down' | 'left' | 'right';
 
 /**
  * The table's own tools: image overlay, Ctrl+wheel image size, double-click cell editing and the
@@ -34,6 +40,8 @@ export class TableTools {
   /** Table scroll offsets to put back once the view is painted again after a write. */
   private keep = new Map<string, { left: number; top: number }>();
   private imgTimer?: ReturnType<typeof setTimeout>;
+  /** The grid hears how a cell editor was left: Esc (no move) or Enter / Tab (a move). */
+  onEditEnd?: (cell: HTMLElement, move: Move | null) => void;
 
   constructor(private doc: Document, private deps: TableDeps) {}
 
@@ -64,6 +72,13 @@ export class TableTools {
       e.preventDefault();
       e.stopPropagation();
       this.openBox(img);
+      return true;
+    }
+    const row = t?.closest?.('.dq [data-act="addrow"]') as HTMLElement | null;
+    const macro = row?.closest<HTMLElement>('.dq')?.dataset.macro;
+    if (row && macro) {
+      e.stopPropagation();
+      this.deps.addRow?.(macro).catch((err) => this.deps.report(err));
       return true;
     }
     const add = t?.closest?.('.dq-tbl [data-act="addcol"]') as HTMLElement | null;
@@ -125,23 +140,35 @@ export class TableTools {
   onDblClick(e: MouseEvent): boolean {
     const td = (e.target as Element | null)?.closest?.('.dq-tbl td[data-col]') as HTMLElement | null;
     if (!td || td.querySelector('input')) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    this.edit(td, false);
+    return true;
+  }
+
+  /**
+   * Open the editor on a data cell: with its raw text (the formula for a formula cell), or empty when
+   * typing started on the cell. Refused with a message when the cell has no single block to write to.
+   */
+  edit(td: HTMLElement, empty: boolean): boolean {
+    if (td.querySelector('input')) return false;
     const tbl = td.closest<HTMLElement>('.dq-tbl');
     const tr = td.closest<HTMLElement>('tr[data-row]');
     const data = tbl?.dataset.macro ? this.deps.view(tbl.dataset.macro) : undefined;
     const row = tr ? data?.result.rows[Number(tr.dataset.row)] : undefined;
     if (!data || !row) return false;
-    e.preventDefault();
-    e.stopPropagation();
     const key = td.dataset.col!;
     const target = cellTarget(row, key, data.query.by);
-    if (target === null) return true;
+    if (target === null) return false;
     if ('error' in target) {
       this.deps.notify(target.error);
-      return true;
+      return false;
     }
-    const input = this.open(td, 'dq-cellin', row.values[key] ?? '', `Value of ${key}: Enter to save, empty to remove, Esc to cancel`);
+    const raw = row.formulas?.[key] ?? row.values[key] ?? '';
+    const input = this.open(td, 'dq-cellin', empty ? '' : raw, `Value of ${key}: Enter to save, empty to remove, Esc to cancel. Start with = for a formula`);
     input.dataset.block = target.uuid;
     input.dataset.key = key;
+    input.dataset.orig = raw;
     return true;
   }
 
@@ -156,7 +183,7 @@ export class TableTools {
     const html = cell.innerHTML;
     cell.innerHTML = `<input class="${cls}" type="text" spellcheck="false" title="${esc(title)}" value="${esc(value)}">`;
     const input = cell.querySelector<HTMLInputElement>('input')!;
-    this.editing = { input, cell, html, done: false };
+    this.editing = { input, cell, html, done: false, pick: null };
     input.focus();
     input.select();
     return input;
@@ -171,6 +198,7 @@ export class TableTools {
     ed.done = true;
     if (ed.cell.isConnected) ed.cell.innerHTML = ed.html;
     this.message(ed.cell, '');
+    ed.picked?.classList.remove('dq-ref');
   }
 
   /** Keys in one of our table fields; true when the key was ours. */
@@ -179,16 +207,90 @@ export class TableTools {
     const input = (e.target as Element | null)?.closest?.('input.dq-cellin, input.dq-keyin') as HTMLInputElement | null;
     if (!ed || !input || input !== ed.input) return false;
     if (e.isComposing || e.keyCode === 229) return true;
+    const cellIn = input.classList.contains('dq-cellin');
     if (e.key === 'Escape') {
       e.preventDefault();
+      const cell = ed.cell;
       this.cancel();
+      if (cellIn) this.onEditEnd?.(cell, null);
+      return true;
+    }
+    if (cellIn && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      this.pickCell(ed, e);
+      return true;
+    }
+    if (e.key === 'Tab' && cellIn) {
+      e.preventDefault();
+      this.finish(ed, e.shiftKey ? 'left' : 'right');
       return true;
     }
     if (e.key !== 'Enter') return true;
     e.preventDefault();
-    if (input.classList.contains('dq-cellin')) this.saveCell(ed);
+    if (cellIn) this.finish(ed, e.shiftKey ? 'up' : 'down');
     else this.addColumn(ed);
     return true;
+  }
+
+  private finish(ed: Editing, move: Move): void {
+    const cell = ed.cell;
+    this.saveCell(ed);
+    this.onEditEnd?.(cell, move);
+  }
+
+  // ---- formula: pick cells of the row with the arrow keys or the mouse ----
+
+  private rowKeys(cell: HTMLElement): string[] {
+    return [...(cell.closest('tr')?.querySelectorAll<HTMLElement>('td[data-col]') ?? [])].map((td) => td.dataset.col!);
+  }
+
+  private showPick(ed: Editing): void {
+    ed.picked?.classList.remove('dq-ref');
+    ed.picked = undefined;
+    if (!ed.pick) return;
+    const td = [...(ed.cell.closest('tr')?.querySelectorAll<HTMLElement>('td[data-col]') ?? [])].find((c) => c.dataset.col === ed.pick!.key);
+    td?.classList.add('dq-ref');
+    ed.picked = td;
+  }
+
+  private applyPick(ed: Editing, r: { value: string; caret: number; pick: RefPick }): void {
+    ed.input.value = r.value;
+    ed.input.setSelectionRange(r.caret, r.caret);
+    ed.pick = r.pick;
+    this.showPick(ed);
+  }
+
+  /** ←/→ in a formula right after `=`, an operator or `(`: insert the neighbouring cell's name. */
+  private pickCell(ed: Editing, e: KeyboardEvent): void {
+    const { input } = ed;
+    if (input.selectionStart !== input.selectionEnd) return;
+    const r = stepPick(input.value, input.selectionStart ?? 0, ed.pick, this.rowKeys(ed.cell), input.dataset.key ?? '', e.key === 'ArrowRight' ? 1 : -1);
+    if (!r) return;
+    e.preventDefault();
+    this.applyPick(ed, r);
+  }
+
+  /** A press on another cell of the row while a formula is typed inserts that cell (and keeps the field). */
+  formulaClick(e: MouseEvent): boolean {
+    const ed = this.editing;
+    const td = (e.target as Element | null)?.closest?.('.dq-tbl td[data-col]') as HTMLElement | null;
+    if (!ed || !td || !ed.input.classList.contains('dq-cellin') || td === ed.cell || td.closest('tr') !== ed.cell.closest('tr')) return false;
+    const r = insertPick(ed.input.value, ed.input.selectionStart ?? ed.input.value.length, ed.pick, td.dataset.col!);
+    if (!r) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    this.applyPick(ed, r);
+    return true;
+  }
+
+  /** Save the cell editor if one is open (pointing at another cell does this). */
+  commit(): void {
+    const ed = this.editing;
+    if (ed && ed.input.classList.contains('dq-cellin')) this.saveCell(ed);
+  }
+
+  /** Whether a cell or column editor is open (the grid then leaves the keys to it). */
+  get busy(): boolean {
+    return !!this.editing;
   }
 
   /** A field of ours lost the focus without Enter: put the cell back. */
@@ -200,9 +302,10 @@ export class TableTools {
     const { block, key } = ed.input.dataset;
     const value = ed.input.value.replace(/[\r\n]+/g, ' ');
     const tbl = ed.cell.closest<HTMLElement>('.dq-tbl');
-    const old = ed.input.defaultValue;
+    const old = ed.input.dataset.orig ?? ed.input.defaultValue;
     ed.done = true;
     this.editing = undefined;
+    ed.picked?.classList.remove('dq-ref');
     if (value.trim() === old.trim()) {
       ed.cell.innerHTML = ed.html;
       return;
@@ -235,7 +338,7 @@ export class TableTools {
     this.deps.addColumn?.(uuid, key);
   }
 
-  private keepScroll(tbl: HTMLElement): void {
+  keepScroll(tbl: HTMLElement): void {
     if (tbl.dataset.macro) this.keep.set(tbl.dataset.macro, { left: tbl.scrollLeft, top: tbl.scrollTop });
   }
 

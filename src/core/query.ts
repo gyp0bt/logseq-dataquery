@@ -1,6 +1,5 @@
 import type { Cond, Kind, Query } from './dsl';
-import { blockToRow, canonical, comparePriority, mergeRows, type Row, type SourceBlock } from './rows';
-import { parseContent } from './text';
+import { blockToRow, canonical, comparePriority, mergeRows, readProps, type Row, type SourceBlock } from './rows';
 import {
   cellMean, compareValues, inferType, isNumericType, resolveType, valuesEqual, type TypeOverrides, type ValueType,
 } from './types';
@@ -31,7 +30,7 @@ export function computeTypes(blocks: SourceBlock[], ov: TypeOverrides): Record<s
   const values = new Map<string, string[]>();
   for (const b of blocks) {
     if (b.preBlock) continue;
-    for (const [k, v] of Object.entries(parseContent(b.content).props)) {
+    for (const [k, v] of Object.entries(readProps(b.content).props)) {
       if (!values.has(k)) values.set(k, []);
       values.get(k)!.push(v);
     }
@@ -72,7 +71,8 @@ function sortRows(rows: Row[], sort: { key: string; desc: boolean }, types: Reco
 
 function keysInOrder(rows: Row[]): string[] {
   const seen = new Set<string>();
-  for (const r of rows) for (const k of Object.keys(r.values)) seen.add(k);
+  // A formula that failed has no value but is still a column.
+  for (const r of rows) for (const k of [...Object.keys(r.values), ...Object.keys(r.errors ?? {})]) seen.add(k);
   return [...seen];
 }
 

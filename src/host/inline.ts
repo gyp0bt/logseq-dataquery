@@ -1,7 +1,9 @@
 import type { ChartOpts } from '../core/chart';
 import { parseQuery, type Kind } from '../core/dsl';
+import type { QueryResult } from '../core/query';
 import { renderInline, type InlineInput, type ViewData } from '../core/view';
 import type { AssetScheme } from '../core/images';
+import type { Row } from '../core/rows';
 import { errorText } from './actions';
 import type { Engine } from './engine';
 
@@ -26,12 +28,16 @@ export interface InlineHooks {
   assetScheme?(): AssetScheme;
   /** Columns added with the table's `+` that no block holds yet. */
   extraCols?(uuid: string): string[];
+  /** Whether the view of `uuid` fills the window. */
+  full?(uuid: string): boolean;
 }
 
 /** Tracks rendered macro slots so DB changes can re-render them. */
 export class InlineViews {
   private slots = new Map<string, SlotInfo>();
   private views = new Map<string, ViewData>();
+  /** Rows just added with `+` whose block holds no property yet, so no query returns them: shown until one does. */
+  private pending = new Map<string, Row[]>();
 
   constructor(
     private engine: Engine,
@@ -53,6 +59,16 @@ export class InlineViews {
       if (!this.exists(slot)) this.slots.delete(slot);
       else await this.render(slot, true);
     }
+  }
+
+  /** Show a row for a block just inserted below the table's last row, until a query finds the block itself. */
+  addPending(macroUuid: string, row: Row): void {
+    this.pending.set(macroUuid, [...(this.pending.get(macroUuid) ?? []), row]);
+  }
+
+  /** The graph changed: rows added in the old one mean nothing now. */
+  clearPending(): void {
+    this.pending.clear();
   }
 
   async refreshAll(): Promise<void> {
@@ -78,6 +94,7 @@ export class InlineViews {
     let view: ViewData | undefined;
     try {
       const ev = await this.engine.evaluate(dsl, kind, uuid);
+      if (ev.result) this.showPending(uuid, ev.result);
       input = { kind, macroUuid: uuid, dsl, ...ev, graphPath: this.hooks.graphPath?.(), assetScheme: this.hooks.assetScheme?.(), extraCols: this.hooks.extraCols?.(uuid) };
       if (ev.result && ev.parsed.ok) view = { kind, query: ev.parsed.query, result: ev.result };
     } catch (e) {
@@ -100,7 +117,19 @@ export class InlineViews {
     info.last = key;
     const opts = this.hooks.chartOpts?.(uuid);
     const open = this.hooks.tableOpen?.(uuid) ?? false;
-    this.provide(slot, opts || open ? renderInline({ ...input, chartOpts: opts, tableOpen: open }) : key);
+    const full = this.hooks.full?.(uuid) ?? false;
+    this.provide(slot, opts || open || full ? renderInline({ ...input, chartOpts: opts, tableOpen: open, full }) : key);
+  }
+
+  /** Add the pending rows the query does not return yet; forget those it does. */
+  private showPending(uuid: string, result: QueryResult): void {
+    const pend = this.pending.get(uuid);
+    if (!pend?.length) return;
+    const found = new Set(result.rows.flatMap((r) => r.sources.map((s) => s.uuid)));
+    const left = pend.filter((p) => !found.has(p.sources[0].uuid));
+    if (left.length) this.pending.set(uuid, left);
+    else this.pending.delete(uuid);
+    if (left.length) result.rows = [...result.rows, ...left];
   }
 
   /** What the view of `uuid` last showed: rows, columns, axes and the query. */

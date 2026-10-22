@@ -144,3 +144,15 @@ export async function jumpTo(api: LogseqLike, uuid: string): Promise<void> {
   if (!page) throw new Error('The page of that block no longer exists.');
   api.Editor.scrollToBlockInPage(page.originalName ?? page.name, uuid);
 }
+
+/** A new table row: a block of its own, right below the block of the row it follows. Returns its uuid. */
+export async function insertRow(api: LogseqLike, afterUuid: string, content: string): Promise<string> {
+  let made: { uuid: string } | null;
+  try {
+    made = await api.Editor.insertBlock(afterUuid, content, { sibling: true, before: false });
+  } catch (e) {
+    throw new Error('Could not add a block for the new row.', { cause: e });
+  }
+  if (!made?.uuid) throw new Error('Logseq did not return the new block.');
+  return made.uuid;
+}

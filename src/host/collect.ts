@@ -5,12 +5,23 @@ import type { LogseqLike } from './api';
 
 export const BLOCKS_QUERY = `[:find (pull ?b [:db/id :block/uuid :block/content :block/pre-block?
   {:block/page [:block/name :block/original-name :block/journal-day]}
-  {:block/path-refs [:block/name]}])
+  {:block/path-refs [:block/name]}
+  {:block/parent [:block/content {:block/parent [:block/content {:block/parent [:block/content]}]}]}])
  :where [?b :block/properties ?p] [(not= ?p {})]]`;
 
 /** Logseq may return namespaced, kebab or camel keys depending on the call path. */
 function pick(o: any, ...names: string[]): any {
   for (const n of names) if (o && o[n] !== undefined && o[n] !== null) return o[n];
+  return undefined;
+}
+
+/** Text of the nearest ancestor that has any (the pull holds three levels; a page has no content). */
+function ancestorTitle(parent: any): string | undefined {
+  for (let p = parent, depth = 0; p && typeof p === 'object' && depth < 3; p = pick(p, 'parent', 'block/parent'), depth++) {
+    const content = pick(p, 'content', 'block/content');
+    const title = typeof content === 'string' ? parseContent(content).title : '';
+    if (title) return title;
+  }
   return undefined;
 }
 
@@ -26,6 +37,7 @@ export function toSourceBlock(raw: any): SourceBlock | null {
   return {
     uuid,
     content,
+    parentTitle: ancestorTitle(pick(raw, 'parent', 'block/parent')),
     page: name.toLowerCase(),
     pageTitle: String(pick(page, 'original-name', 'originalName', 'block/original-name') ?? name),
     journalDay: pick(page, 'journal-day', 'journalDay', 'block/journal-day') ?? null,

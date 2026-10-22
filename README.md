@@ -2,7 +2,11 @@
 
 > **Beta.** Works with Logseq 0.10.x (Markdown/file graphs). Feedback and bug reports are welcome in [Issues](https://github.com/gyp0bt/logseq-dataquery/issues).
 
-Turn blocks with properties into a typed table, scatter plot or bar chart — right where you write them.
+**English** · [日本語](#日本語) · [中文](#中文)
+
+Turn blocks with properties into a typed table, scatter plot or bar chart — right where you write them. Tables work like a small spreadsheet: arrow keys, formulas, drag-select, copy and paste, full screen.
+
+![Table with a formula column, sorted by score](docs/img/table.png)
 
 ```
 - Seed sweep
@@ -93,6 +97,25 @@ A property such as `loss:: 1.27/1.31/1.29` (or `1.27, 1.31`) holds several numbe
 
 The old `{{renderer :dataquery, …}}` macro is no longer drawn; replace it with one of the three above.
 
+## Table as a spreadsheet
+
+Click a cell and the table takes the keyboard (Logseq does not see those keys until you press Esc).
+
+| Key / action | Does |
+|---|---|
+| Arrows, Tab, Enter | Move between cells. Shift extends the selection, Ctrl jumps to the edge |
+| Just type | Starts editing the cell; Enter saves and moves down, Tab saves and moves right, Esc cancels. F2 or double-click edits with the old value |
+| Delete / Backspace | Clears the selected cells (removes the properties) |
+| Drag, Shift+arrows, Ctrl+A | Select a range |
+| Ctrl+C / X / V | Copy / cut / paste. Copies tab-separated text **and** an HTML table, so Excel and Google Sheets paste it as cells (a browser clipboard cannot carry an .xlsx file). Pasting a block of cells writes each into its block |
+| Ctrl+V with a picture | Puts the picture into the cell. Logseq gives plugins no way to write into `assets/`, so it is stored in the cell as a `data:` URL (scaled to ≤ 1024 px) |
+| Enter on the last row, or the **+** row | Adds a row: a new block below the last row's block, carrying `tags::` and any `key==value` of the query |
+| ⛶ | Full screen (Esc leaves) |
+
+**Formulas.** A cell starting with `=` is a formula, stored as the property text (`total:: =score*loss`). It reads other cells **of the same row** by column name, with `+ - * / % ^`, `&` (join text), comparisons and JS-style functions: `abs round floor ceil sqrt pow mod exp log log10 sin cos atan2 hypot min max sum avg median stdev count if and or not concat len upper lower`, plus `pi` and `e` Ranges such as `a:c` work inside functions. While typing a formula, **arrow keys or a click pick a cell** into it, as in Excel. A bad formula shows `#ERR` with the reason on hover.
+
+**Labels without `by:`.** A block with no text of its own is named after its parent block: `## CheckItem1` with a child `id:: abc` shows as `CheckItem1`.
+
 ## Types
 
 Inferred per key across the whole graph:
@@ -125,6 +148,30 @@ npm run build
 Logseq → Settings → Advanced → Developer mode on → Plugins → Load unpacked plugin → choose this folder.
 
 Works with Logseq 0.10.x (Markdown/file graphs).
+
+## 日本語
+
+ブロックのプロパティを、型つきの表・散布図・棒グラフにします。書いたその場で見られます。
+
+- `/DQ table` `/DQ scatter` `/DQ bar` でマクロを挿入。クエリは `#experiment seed==0 x:score y:loss color:seed` のように書きます（詳細は上の英語の表）。
+- **表は表計算ソフトのように使えます。** セルをクリックすると矢印キー・Tab・Enter で移動、そのまま打てば編集、Delete で消去。ドラッグで範囲選択し、Ctrl+C でコピー（Excel / スプレッドシートにセルとして貼れます）。Ctrl+V で貼り付け、画像も貼れます。
+- **数式**: セルを `=` で始めると数式（例 `=score*loss`）。同じ行のセルを列名で参照でき、`sum` `avg` `round` `if` などの関数が使えます。入力中に矢印キーやクリックでセルを指定できます。
+- **行の追加**: 最終行で Enter、または表の下の **+**。最後の行のブロックの直下に新しいブロックを作ります。
+- **⛶** で全画面。Esc で戻ります。
+- `by:` を使わないとき、ブロックのラベルは親ブロックの文字列になります（`## CheckItem1` の子 `id:: abc` → `CheckItem1`）。
+- 注意: xlsx ファイルそのものはクリップボードに載せられないため、HTML 表とタブ区切りテキストでコピーします。貼り付けた画像は `assets/` に保存できず、セル内の `data:` URL として保持されます。
+
+## 中文
+
+把带属性的块变成带类型的表格、散点图或柱状图，就在你写的地方显示。
+
+- 用 `/DQ table`、`/DQ scatter`、`/DQ bar` 插入宏。查询写法如 `#experiment seed==0 x:score y:loss color:seed`（详见上面英文表格）。
+- **表格像电子表格一样使用**：点击单元格后，方向键 / Tab / Enter 移动，直接输入即编辑，Delete 清除。拖动选择区域，Ctrl+C 复制（可作为单元格粘贴到 Excel / 表格软件），Ctrl+V 粘贴，也可粘贴图片。
+- **公式**：以 `=` 开头（如 `=score*loss`），可按列名引用同一行的其他单元格，支持 `sum`、`avg`、`round`、`if` 等函数。输入公式时可用方向键或点击选取单元格。
+- **添加行**：在最后一行按 Enter，或点击表格下方的 **+**，会在最后一行所在块的下方新建一个块。
+- **⛶** 全屏，Esc 退出。
+- 不使用 `by:` 时，块的标签为其父块的文本（`## CheckItem1` 下的 `id:: abc` 显示为 `CheckItem1`）。
+- 说明：浏览器剪贴板无法携带 xlsx 文件，因此以 HTML 表格和制表符文本复制；粘贴的图片无法写入 `assets/`，以 `data:` URL 保存在单元格中。
 
 ## License
 

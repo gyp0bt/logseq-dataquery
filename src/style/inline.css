@@ -121,3 +121,23 @@
 .dq-addcol:hover { color: var(--dq-accent); }
 .dq-cellin, .dq-keyin { box-sizing: border-box; width: 100%; min-width: 6em; font: inherit; color: var(--dq-fg); background: var(--dq-code); border: 1px solid var(--dq-accent); border-radius: 3px; padding: 0 4px; }
 .dq-cellin:focus, .dq-keyin:focus { outline: none; }
+/* Spreadsheet grid: the table takes the keyboard while it has the focus; cells are selected, not text. */
+.dq-tbl:focus { outline: none; }
+.dq-tbl td[data-col] { user-select: none; }
+.dq-tbl td[data-col] input { user-select: text; }
+.dq td.dq-sel { box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--dq-accent) 18%, transparent); }
+.dq td.dq-cur { outline: 2px solid var(--dq-accent); outline-offset: -2px; }
+/* A cell picked into the formula being typed. */
+.dq td.dq-ref { outline: 2px dashed var(--dq-warn); outline-offset: -2px; }
+.dq td.dq-formula { font-style: italic; }
+.dq td.dq-fail.dq-formula { font-style: normal; }
+.dq tr.dq-addrow td { text-align: center; color: var(--dq-muted); cursor: pointer; border-bottom: 0; }
+.dq tr.dq-addrow td:hover { color: var(--dq-accent); background: var(--dq-code); }
+.dq-nodata .dq-empty .dq-sb { margin-left: 6px; }
+/* Full screen: the view is fixed over the window; the table takes the space and scrolls inside. */
+.dq.dq-full { position: fixed; inset: 0; z-index: 9990; width: auto; max-width: none; height: auto; margin: 0; border-radius: 0; border: 0; display: flex; flex-direction: column; background: var(--dq-bg); }
+.dq.dq-full .dq-body { flex: 1 1 auto; min-height: 0; }
+.dq.dq-full .dq-main { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+.dq.dq-full .dq-tbl { max-height: none; flex: 1 1 auto; min-height: 0; }
+.dq.dq-full .dq-fold { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.dq.dq-full .dq-chartbox { flex: 0 0 auto; }

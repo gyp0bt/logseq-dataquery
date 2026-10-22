@@ -1,3 +1,4 @@
+import { resolveFormulas } from './formula';
 import { parseContent } from './text';
 import { toList } from './types';
 
@@ -10,6 +11,8 @@ export interface SourceBlock {
   journalDay: number | null;
   pathRefs: string[];
   preBlock: boolean;
+  /** Text of the nearest ancestor block that has any; names a block whose own text is empty. */
+  parentTitle?: string;
   /** Database id; roughly document order, used when tree position is unknown. */
   seq: number;
 }
@@ -22,21 +25,38 @@ export interface Row {
   /** Highest priority first; `sources[0]` is where clicks jump to. */
   sources: Source[];
   conflicts: Record<string, Conflict[]>;
+  /** Formula cells: the `=…` text behind the computed value in `values`. */
+  formulas?: Record<string, string>;
+  /** Formula cells that failed: why. They have no entry in `values`. */
+  errors?: Record<string, string>;
   /** Merged rows only: the blocks holding each key, highest priority first. */
   owners?: Record<string, string[]>;
 }
 
+/** The properties of a block with formulas worked out, plus the formula text and failures. */
+export function readProps(content: string): { props: Record<string, string>; title: string; formulas: Record<string, string>; errors: Record<string, string> } {
+  const { props, title } = parseContent(content);
+  const r = resolveFormulas(props);
+  return { props: r.values, title, formulas: r.formulas, errors: r.errors };
+}
+
 export function blockToRow(b: SourceBlock): Row | null {
   if (b.preBlock) return null;
-  const { props, title } = parseContent(b.content);
-  if (Object.keys(props).length === 0) return null;
-  return {
+  const { props, title, formulas, errors } = readProps(b.content);
+  if (Object.keys(props).length === 0 && Object.keys(errors).length === 0) return null;
+  const row: Row = {
     id: b.uuid,
-    title,
+    // A block that holds only properties is named after its parent: `## Item` over `- status:: ok`.
+    title: title || b.parentTitle || '',
     values: props,
     sources: [{ uuid: b.uuid, pageTitle: b.pageTitle, journalDay: b.journalDay }],
     conflicts: {},
   };
+  if (Object.keys(formulas).length) {
+    row.formulas = formulas;
+    row.errors = errors;
+  }
+  return row;
 }
 
 /** Newest journal first, then non-journal pages by title. */
@@ -87,7 +107,22 @@ function combine(rows: Row[]): Row {
   }
   const owners: Record<string, string[]> = {};
   for (const k of Object.keys(values)) owners[k] = ranked.filter((r) => k in r.values).map((r) => r.sources[0].uuid);
-  return { id: ranked[0].id, title: ranked[0].title, values, sources: ranked.map((r) => r.sources[0]), conflicts, owners };
+  const formulas: Record<string, string> = {};
+  const errors: Record<string, string> = {};
+  // The block whose value won a key decides whether that cell is a formula.
+  for (const k of new Set(ranked.flatMap((r) => Object.keys(r.formulas ?? {})))) {
+    const win = ranked.find((r) => k in r.values || k in (r.formulas ?? {}));
+    if (win?.formulas && k in win.formulas) {
+      formulas[k] = win.formulas[k];
+      if (win.errors?.[k]) errors[k] = win.errors[k];
+    }
+  }
+  const merged: Row = { id: ranked[0].id, title: ranked[0].title, values, sources: ranked.map((r) => r.sources[0]), conflicts, owners };
+  if (Object.keys(formulas).length) {
+    merged.formulas = formulas;
+    merged.errors = errors;
+  }
+  return merged;
 }
 
 export function rowLabel(row: Row, mergeBy?: string): string {

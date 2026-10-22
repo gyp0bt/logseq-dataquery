@@ -1,9 +1,10 @@
 import { dragAxis, formatTick, legendHtml, type ChartOpts, type Domain } from '../core/chart';
 import { parseQuery } from '../core/dsl';
 import { chartOf, errorHtml, tableToggleText, toCsv, type ViewData } from '../core/view';
+import { Grid } from './grid';
 import { TableTools, type TableDeps } from './tableTools';
 
-export interface InteractDeps extends Pick<TableDeps, 'saveCell' | 'addColumn' | 'setImg'> {
+export interface InteractDeps extends Pick<TableDeps, 'saveCell' | 'addColumn' | 'addRow' | 'setImg'> {
   /** Write a valid query back into the macro. */
   submit(uuid: string, dsl: string): Promise<void>;
   /** What the view of a macro last showed, to redraw its chart or copy its table. */
@@ -38,6 +39,8 @@ export const SHIELDED_EVENTS = [
 /** Table cells a double-click or click turns into a field (cell value, new column name). */
 const TABLE_CELLS = '.dq-tbl td[data-col], .dq-tbl th.dq-addcol';
 const RELEASES = new Set(['mouseup', 'pointerup', 'click']);
+/** Keyboard and clipboard events the table (`.dq-tbl`, focusable) keeps from Logseq while it has the focus. */
+const GRID_EVENTS = new Set(['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend', 'copy', 'cut', 'paste']);
 
 /**
  * What a chart shows besides the macro: zoom, enlarged, Ctrl+wheel scale and traces hidden by a
@@ -66,6 +69,9 @@ export class Interact {
   /** Macro blocks whose Cols ▾ list is open, so a repaint after a tick keeps it open. */
   private colsOpen = new Set<string>();
   private table: TableTools;
+  private grid: Grid;
+  /** Macro blocks whose view fills the window. */
+  private full = new Set<string>();
   /** The one hover label, fixed-positioned in Logseq's <body> so no overflow box can clip it. */
   private tipEl?: HTMLElement;
   private observers = new WeakMap<Element, ResizeObserver>();
@@ -78,7 +84,8 @@ export class Interact {
   private axDrag?: { box: HTMLElement; ax: 'x' | 'y'; end: AxisEnd; d: Domain; a: NonNullable<ReturnType<typeof areaOf>>; from: { x: number; y: number }; cx: number; cy: number; moved: boolean };
 
   constructor(private doc: Document, private deps: InteractDeps) {
-    this.table = new TableTools(doc, deps);
+    this.table = new TableTools(doc, { ...deps, addRow: (m) => this.grid.addRowFor(m) });
+    this.grid = new Grid(doc, deps, this.table, (tbl) => this.leaveFull(tbl.closest<HTMLElement>('.dq')));
   }
 
   install(): () => void {
@@ -90,6 +97,8 @@ export class Interact {
       ['focusout', (e) => this.onFocusOut(e as FocusEvent), true],
       ['click', (e) => this.onClick(e as MouseEvent), true],
       ['dblclick', (e) => this.onDblClick(e as MouseEvent), true],
+      ['mousemove', (e) => this.grid.onMouseMove(e as MouseEvent), true],
+      ['mouseup', () => this.grid.onMouseUp(), true],
       ['mouseover', (e) => this.onOver(e as MouseEvent), true],
       ['mouseout', (e) => this.onOut(e as MouseEvent), true],
       ['pointerdown', (e) => this.onDown(e as PointerEvent), false],
@@ -142,6 +151,7 @@ export class Interact {
       const cols = view.querySelector<HTMLDetailsElement>('.dq-cols');
       if (cols && uuid) cols.open = this.colsOpen.has(uuid);
       this.table.restore(view);
+      this.grid.restore(view);
     }
     const boxes = views.flatMap((v) => [...v.querySelectorAll<HTMLElement>('.dq-chartbox:not([data-live])')]);
     for (const box of boxes) {
@@ -186,6 +196,11 @@ export class Interact {
     return st?.w ? this.optsOf(st, st.w) : undefined;
   }
 
+  /** Whether the view of `uuid` fills the window. */
+  isFull(uuid: string): boolean {
+    return this.full.has(uuid);
+  }
+
   /** Whether the table under the chart of `uuid` is expanded. */
   tableOpen(uuid: string): boolean {
     return this.opened.has(uuid);
@@ -218,6 +233,7 @@ export class Interact {
     // A press on a table cell may open a cell editor (double-click, `+`): leave another block's raw
     // editing now, while its textarea still has the focus, as a press on a field does.
     if (this.pressed?.closest?.(TABLE_CELLS)) this.deps.leaveEditing?.();
+    this.grid.onMouseDown(e);
   }
 
   private shield(e: Event): void {
@@ -230,6 +246,24 @@ export class Interact {
       return stopAll(e);
     }
     const t = e.target as Element | null;
+    // The focused table: keys and clipboard are its own; mouse events are not touched.
+    const tbl = t?.matches?.('.dq-tbl') ? (t as HTMLElement) : null;
+    if (tbl && GRID_EVENTS.has(e.type)) {
+      if (e.type === 'keydown') {
+        this.grid.onKey(e as KeyboardEvent, tbl);
+        if (['Escape', 'Enter', 'Tab'].includes((e as KeyboardEvent).key)) this.swallowKeyUp = (e as KeyboardEvent).key;
+      } else if (e.type === 'copy' || e.type === 'cut') this.grid.onCopy(e as ClipboardEvent, tbl, e.type === 'cut');
+      else if (e.type === 'paste') this.grid.onPaste(e as ClipboardEvent, tbl);
+      return stopAll(e);
+    }
+    // Esc leaves a full-screen view whatever has the focus in it.
+    if (e.type === 'keydown' && (e as KeyboardEvent).key === 'Escape' && !t?.closest?.(FIELD_SELECTOR)) {
+      const view = t?.closest?.<HTMLElement>('.dq-full') ?? (t === this.doc.body ? this.doc.querySelector<HTMLElement>('.dq-full') : null);
+      if (view && this.leaveFull(view)) {
+        this.swallowKeyUp = 'Escape';
+        return stopAll(e);
+      }
+    }
     const inField = !!t?.closest?.(FIELD_SELECTOR);
     // A press in a field released outside it (selecting text past its end) is the field's too.
     const fromField = RELEASES.has(e.type) && !!this.pressed?.closest?.(FIELD_SELECTOR);
@@ -242,7 +276,7 @@ export class Interact {
 
   private onKey(e: KeyboardEvent): void {
     if (this.table.onKey(e)) {
-      if (e.key === 'Escape' || e.key === 'Enter') this.swallowKeyUp = e.key;
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === 'Tab') this.swallowKeyUp = e.key;
       return;
     }
     const axIn = (e.target as Element | null)?.closest?.('input.dq-axin') as HTMLInputElement | null;
@@ -354,6 +388,7 @@ export class Interact {
   private sideAction(btn: HTMLElement): void {
     const act = btn.dataset.act;
     if (act === 'csv') return this.copyCsv(btn);
+    if (act === 'full') return this.toggleFull(btn.closest<HTMLElement>('.dq'));
     const box = btn.closest('.dq')?.querySelector<HTMLElement>('.dq-chartbox');
     if (!box) return;
     const st = this.stateOf(box);
@@ -365,6 +400,31 @@ export class Interact {
       st.hidden.clear();
     }
     this.draw(box);
+  }
+
+  /** The view fills the window (⛶ or Esc to leave). A chart's folded table is opened, since it is what fills it. */
+  private toggleFull(view: HTMLElement | null): void {
+    const uuid = view?.dataset.macro;
+    if (!view || !uuid) return;
+    if (this.full.has(uuid)) {
+      this.leaveFull(view);
+      return;
+    }
+    this.full.add(uuid);
+    view.classList.add('dq-full');
+    const fold = view.querySelector<HTMLElement>('.dq-fold');
+    if (fold) {
+      this.opened.add(uuid);
+      setFold(fold, true);
+    }
+  }
+
+  /** True when the view was in full screen. */
+  private leaveFull(view: HTMLElement | null): boolean {
+    const uuid = view?.dataset.macro;
+    if (!view || !uuid || !this.full.delete(uuid)) return false;
+    view.classList.remove('dq-full');
+    return true;
   }
 
   private copyCsv(btn: HTMLElement): void {

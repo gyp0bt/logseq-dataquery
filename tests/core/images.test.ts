@@ -44,7 +44,10 @@ describe('resolveImageSrc', () => {
     expect(resolveImageSrc('http://e.org/a.png', g)).toBe('http://e.org/a.png');
     expect(resolveImageSrc('file:///x/a.png', g)).toBe('file:///x/a.png');
     expect(resolveImageSrc('javascript:alert(1)//.png', g)).toBeNull();
-    expect(resolveImageSrc('data:image/png;base64,AAA', g)).toBeNull();
+    // A pasted raster picture is kept in the cell as a data URL; SVG (script) and other data are refused.
+    expect(resolveImageSrc('data:image/png;base64,AAA', g)).toBe('data:image/png;base64,AAA');
+    expect(resolveImageSrc('data:image/svg+xml;base64,AAA', g)).toBeNull();
+    expect(resolveImageSrc('data:text/html;base64,AAA', g)).toBeNull();
     expect(resolveImageSrc('../assets/x.png', undefined)).toBeNull();
   });
 });

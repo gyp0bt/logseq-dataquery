@@ -22,6 +22,8 @@ export interface InlineInput {
   assetScheme?: AssetScheme;
   /** Columns added with the table's `+` that no block holds yet (transient, kept by the host). */
   extraCols?: string[];
+  /** The view fills the window (transient, kept by the host). */
+  full?: boolean;
 }
 
 export interface TableOpts { graphPath?: string; assetScheme?: AssetScheme; extraCols?: string[] }
@@ -57,8 +59,11 @@ const sortAttrs = (uuid: string, key: string, q: Query) => {
 };
 const arrowOf = (key: string, q: Query) => (q.sort?.key === key ? (q.sort.desc ? ' ▼' : ' ▲') : '');
 
+const ADD_ROW_TITLE = 'Add a row below the last one (or press Enter on the last row)';
+
 export function tableHtml(result: QueryResult, q: Query, uuid: string, opts: TableOpts = {}): string {
-  if (!result.rows.length) return '<p class="dq-empty">No rows match.</p>';
+  if (!result.rows.length)
+    return `<div class="dq-tbl dq-nodata" data-on-click="dqNoop" data-macro="${esc(uuid)}"><p class="dq-empty">No rows match. <button class="dq-sb" data-act="addrow" title="${ADD_ROW_TITLE}">+ row</button></p></div>`;
   const cols = shownCols(result, q, opts.extraCols);
   const by = q.by && !q.hide.includes(q.by) ? q.by : undefined;
   const head = cols
@@ -74,10 +79,13 @@ export function tableHtml(result: QueryResult, q: Query, uuid: string, opts: Tab
         .map((k) => {
           const t = result.types[k] ?? 'string';
           const v = r.values[k];
-          const cls = [alignRight(t) ? 'dq-num' : '', cellClass(t, v), r.conflicts[k] ? 'dq-conflict' : ''].filter(Boolean).join(' ');
-          const alt = r.conflicts[k] ? ` title="${esc(r.conflicts[k].map((c) => `${c.value} (${c.pageTitle})`).join(' / '))}"` : '';
+          const f = r.formulas?.[k];
+          const bad = r.errors?.[k];
+          const cls = [alignRight(t) ? 'dq-num' : '', cellClass(t, v), r.conflicts[k] ? 'dq-conflict' : '', f ? 'dq-formula' : '', bad ? 'dq-fail' : ''].filter(Boolean).join(' ');
+          const tip = bad ? `${f} → ${bad}` : f ?? (r.conflicts[k] ? r.conflicts[k].map((c) => `${c.value} (${c.pageTitle})`).join(' / ') : '');
+          const alt = tip ? ` title="${esc(tip)}"` : '';
           // `data-col` + the row's `data-row` let a double-click find the block to edit.
-          return `<td class="${cls}" data-col="${esc(k)}"${alt}>${cellHtml(v ?? '', opts.graphPath, opts.assetScheme)}${r.conflicts[k] ? '<sup>⚠</sup>' : ''}</td>`;
+          return `<td class="${cls}" data-col="${esc(k)}"${alt}>${bad ? '#ERR' : cellHtml(v ?? '', opts.graphPath, opts.assetScheme)}${r.conflicts[k] ? '<sup>⚠</sup>' : ''}</td>`;
         })
         .join('');
       // A chart point finds its rows by the value of its group key: `color` (every row of that
@@ -88,7 +96,9 @@ export function tableHtml(result: QueryResult, q: Query, uuid: string, opts: Tab
     })
     .join('');
   const add = '<th class="dq-addcol" data-act="addcol" title="Add a property">+</th>';
-  return `<div class="dq-tbl" data-on-click="dqNoop" data-macro="${esc(uuid)}" style="--dq-img:${q.img ?? IMG_DEFAULT}px"><table><thead><tr>${first}${head}${add}</tr></thead><tbody>${body}</tbody></table></div>`;
+  const addRow = `<tr class="dq-addrow"><td colspan="${cols.length + 2}" data-act="addrow" title="${ADD_ROW_TITLE}">+</td></tr>`;
+  // `tabindex` lets the table take the keyboard: arrows move the cell, typing edits it (host script).
+  return `<div class="dq-tbl" tabindex="0" data-on-click="dqNoop" data-macro="${esc(uuid)}" style="--dq-img:${q.img ?? IMG_DEFAULT}px"><table><thead><tr>${first}${head}${add}</tr></thead><tbody>${body}</tbody><tfoot>${addRow}</tfoot></table></div>`;
 }
 
 const csvCell = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
@@ -182,6 +192,7 @@ function imgButtons(uuid: string): string {
 function sideHtml(inp: InlineInput, q: Query, res: QueryResult): string {
   const uuid = inp.macroUuid;
   const csv = button('csv', 'CSV', 'Copy the table as CSV');
+  const full = button('full', '⛶', 'Table full screen (Esc to leave)');
   let html = '';
   // The `by` key is the table's first column; the axes may take it too.
   const cols = q.by ? [q.by, ...res.cols] : res.cols;
@@ -193,14 +204,14 @@ function sideHtml(inp: InlineInput, q: Query, res: QueryResult): string {
     html += select(uuid, 'color', 'Color', cols, res.axes.color, q.by ? `by: ${q.by}` : 'none');
     html += errToggle(uuid, 'bar', q.err === 'bar', '±', 'Pool groups: mean and min–max error bars');
     html += errToggle(uuid, 'band', q.err === 'band', '▤', 'Pool groups: mean and min–max band');
-    html += button('reset', '⟲', 'Reset axes (or double-click the plot)') + button('expand', '⤢', 'Enlarge') + csv;
+    html += button('reset', '⟲', 'Reset axes (or double-click the plot)') + button('expand', '⤢', 'Enlarge') + full + csv;
   } else if (inp.kind === 'bar') {
     html += select(uuid, 'x', 'X', cols, res.axes.x);
     html += yChips(uuid, q, res.axes.ys, numeric);
     // `color:` splits each category into one bar per value.
     html += select(uuid, 'color', 'Color', cols, res.axes.color, 'none');
-    html += button('expand', '⤢', 'Enlarge') + csv;
-  } else html += csv;
+    html += button('expand', '⤢', 'Enlarge') + full + csv;
+  } else html += full + csv;
   html += colsMenu(uuid, q, cols);
   if (hasImages(res, q)) html += imgButtons(uuid);
   return `<div class="dq-side" data-on-click="dqNoop" data-macro="${esc(uuid)}">${html}</div>`;
@@ -228,7 +239,7 @@ const CHART_HINT: Record<Kind, string> = {
 export function renderInline(inp: InlineInput): string {
   const uuid = esc(inp.macroUuid);
   const root = (bad: boolean, meta: string, body: string, msg = '') =>
-    `<div class="dq dq-${inp.kind}" data-on-click="dqEdit" data-macro="${uuid}"><div class="dq-head">${dslInput(inp.macroUuid, inp.dsl, bad)}${meta}</div><div class="dq-msg">${msg}</div>${body}</div>`;
+    `<div class="dq dq-${inp.kind}${inp.full ? ' dq-full' : ''}" data-on-click="dqEdit" data-macro="${uuid}"><div class="dq-head">${dslInput(inp.macroUuid, inp.dsl, bad)}${meta}</div><div class="dq-msg">${msg}</div>${body}</div>`;
   if (!inp.parsed.ok) {
     const { message, col } = inp.parsed.error;
     return root(true, '', '', errorHtml(inp.dsl, message, col));

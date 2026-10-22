@@ -48,7 +48,7 @@ describe('renderInline', () => {
     const html = view('table', 'by:run sort:gre', result(rows, ['gre']));
     expect(html).not.toContain('Open ↗');
     expect(html).toContain('value="by:run sort:gre" placeholder=');
-    expect(html).toContain('<div class="dq-tbl" data-on-click="dqNoop" data-macro="m" style="--dq-img:64px">');
+    expect(html).toContain('<div class="dq-tbl" tabindex="0" data-on-click="dqNoop" data-macro="m" style="--dq-img:64px">');
     expect(html).toContain('<tr data-uuid="b" data-row="1" data-key="r2">');
     // Without by:, color: keys the rows so a point of a colour group can mark all of them.
     const byColor = view('table', 'color:seed', result([row('a', { seed: '0' }), row('b', { seed: '0' })], ['seed']));

@@ -98,3 +98,13 @@
 - [ ] ライト/ダークを切り替える → 読める配色のまま。
 - [ ] 字の大きさが本文や Logseq 組み込みクエリの表と揃っている。
 - [ ] 行がアウトラインに書いた順に並ぶ（シャッフルされない）。
+
+## v0.2.0: spreadsheet table (not covered by jsdom tests)
+
+- Full screen (⛶): the view fills the Logseq window; no ancestor clips it. Esc leaves.
+- Click a cell, type a letter with a Japanese IME on: the editor opens and the first key is not lost.
+- Arrow keys / Tab / Enter in a cell do not move Logseq's block selection or open its editor.
+- Drag-select, Ctrl+C, paste into Excel / Sheets: cells land as cells.
+- Ctrl+V a screenshot into a cell: thumbnail shows; the block text holds a `data:image/…` URL.
+- Enter on the last row, and the **+** row: a new block appears below the last row's block and the row shows at once.
+- Formula: `=` then arrow keys / click pick same-row columns; `#ERR` on a cycle.

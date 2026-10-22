@@ -3,6 +3,8 @@ import { esc } from './html';
 export interface CellImage { alt: string; src: string }
 export type CellPiece = { text: string } | { img: CellImage };
 
+/** Only raster images: an SVG data URL can carry script. */
+const DATA_IMG = /^data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/i;
 const IMG_EXT = /\.(png|jpe?g|gif|webp|svg)$/i;
 // `![alt](path)` plus Logseq's optional `{:height 100 :width 200}` size attributes.
 const MD_IMG = /!\[([^\]]*)\]\(([^)\s]+)\)(\{[^}]*\})?/g;
@@ -48,6 +50,8 @@ const localUrl = (path: string, scheme: AssetScheme): string => {
 export function resolveImageSrc(src: string, graphPath: string | undefined, scheme: AssetScheme = 'file'): string | null {
   if (/^[A-Za-z]:[\\/]/.test(src)) return localUrl(src, scheme);
   const sch = /^([a-z][a-z0-9+.-]*):/i.exec(src)?.[1]?.toLowerCase();
+  // A pasted picture is stored in the cell itself (Logseq gives plugins no way to write into assets/).
+  if (sch === 'data') return DATA_IMG.test(src) ? src : null;
   if (sch) return sch === 'http' || sch === 'https' || sch === 'file' || sch === 'assets' ? src : null;
   if (src.startsWith('/')) return localUrl(src, scheme);
   const asset = /^(?:\.\.\/)?(assets\/.+)$/.exec(src);

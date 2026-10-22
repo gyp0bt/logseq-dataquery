@@ -3,7 +3,8 @@ import { joinMacroArgs, type Kind } from './core/dsl';
 import type { AssetScheme } from './core/images';
 import { buildMacro, LEGACY_TYPE, MACRO_KINDS } from './core/macroText';
 import { renderLegacy } from './core/view';
-import { applyControl, errorText, jumpTo, readMacro, saveCell, saveDsl, setImgInMacro, type SetEvent } from './host/actions';
+import { newRowFor } from './core/newRow';
+import { applyControl, errorText, insertRow, jumpTo, readMacro, saveCell, saveDsl, setImgInMacro, type SetEvent } from './host/actions';
 import type { LogseqLike } from './host/api';
 import { Engine } from './host/engine';
 import { InlineViews } from './host/inline';
@@ -88,6 +89,7 @@ async function main(): Promise<void> {
     graphPath: () => graphPath,
     assetScheme: () => assetScheme,
     extraCols: (uuid) => extra.get(uuid) ?? [],
+    full: (uuid) => interact?.isFull(uuid) ?? false,
   });
 
   try {
@@ -99,6 +101,19 @@ async function main(): Promise<void> {
       resume: () => void views.resume().catch(report),
       saveCell: (block, key, value) => saveCell(api, block, key, value),
       setImg: (uuid, px) => setImgInMacro(api, uuid, px),
+      addRow: async (macro) => {
+        const data = views.view(macro);
+        if (!data) throw new Error('The table has not finished drawing yet.');
+        const made = newRowFor(data.query);
+        // Right below the block of the last row on screen; an empty table starts below the macro block.
+        const last = data.result.rows[data.result.rows.length - 1];
+        const uuid = await insertRow(api, last ? last.sources[0].uuid : macro, made.content);
+        // A block with no property of its own is no row to any query: show it until it gets one.
+        views.addPending(macro, { id: uuid, title: '', values: { ...made.values }, sources: [{ uuid, pageTitle: '', journalDay: null }], conflicts: {} });
+        engine.invalidate();
+        await views.refreshAll();
+        return uuid;
+      },
       addColumn: (uuid, key) => {
         extra.set(uuid, [...(extra.get(uuid) ?? []), key]);
         void views.refreshAll().catch(report);
@@ -148,6 +163,7 @@ async function main(): Promise<void> {
 
   logseq.App.onCurrentGraphChanged(() => {
     engine.invalidate();
+    views.clearPending();
     void readGraph().then(() => views.refreshAll());
   });
 

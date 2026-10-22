@@ -9,5 +9,6 @@ export interface LogseqLike {
     scrollToBlockInPage(page: string, uuid: string): void;
     upsertBlockProperty(uuid: string, key: string, value: unknown): Promise<unknown>;
     removeBlockProperty(uuid: string, key: string): Promise<unknown>;
+    insertBlock(src: string, content: string, opts?: { sibling?: boolean; before?: boolean }): Promise<{ uuid: string } | null>;
   };
 }
