@@ -117,3 +117,10 @@ describe('picking cells with the arrow keys', () => {
     expect(insertPick('=2c', 3, null, 'c')).toBeNull();
   });
 });
+
+describe('names from the prototype chain', () => {
+  it('are unknown functions, not calls into Object', () => {
+    for (const f of ['constructor', 'toString', '__proto__', 'hasOwnProperty'])
+      expect(() => evalFormula(`=${f}(1)`, { cell: () => undefined, order: [] })).toThrow(/Unknown function/);
+  });
+});

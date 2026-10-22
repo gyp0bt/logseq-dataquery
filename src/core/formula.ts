@@ -272,8 +272,8 @@ function run(node: Node, env: FormulaEnv): FormulaValue {
     case 'range': return fail("A range such as a:c only works inside a function, e.g. sum(a:c)");
     case 'un': return node.op === '-' ? -num(run(node.a, env)) : num(run(node.a, env));
     case 'call': {
-      if (!node.args.length && node.f in CONSTS) return CONSTS[node.f];
-      const f = FUNCS[node.f];
+      if (!node.args.length && Object.hasOwn(CONSTS, node.f)) return CONSTS[node.f];
+      const f = Object.hasOwn(FUNCS, node.f) ? FUNCS[node.f] : undefined;
       if (!f) return fail(`Unknown function or column '${node.f}'`);
       const args: FormulaValue[] = [];
       for (const a of node.args) {
