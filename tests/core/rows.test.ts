@@ -12,7 +12,7 @@ describe('blockToRow', () => {
     expect(blockToRow(block('a', 'id:: 1\ncollapsed:: true'))).toBeNull();
     expect(blockToRow(block('a', 'k:: v', { preBlock: true }))).toBeNull();
     expect(row(block('a', 'T\nk:: v'))).toEqual({
-      id: 'a', title: 'T', values: { k: 'v' },
+      id: 'a', title: 'T', titleOwn: true, values: { k: 'v' },
       sources: [{ uuid: 'a', pageTitle: 'P', journalDay: null }], conflicts: {},
     });
   });

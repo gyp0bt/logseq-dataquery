@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { deleteBlocks, errorText, insertRow, jumpTo, readMacro, saveDsl, setSettingInMacro, toggleErrInMacro } from '../../src/host/actions';
+import { deleteBlocks, errorText, insertRow, jumpTo, saveTitle, readMacro, saveDsl, setSettingInMacro, toggleErrInMacro } from '../../src/host/actions';
 import { fetchOrder, fetchTypeOverrides, toSourceBlock } from '../../src/host/collect';
 import { Engine } from '../../src/host/engine';
 import { InlineViews } from '../../src/host/inline';
@@ -252,5 +252,22 @@ describe('rows added and deleted', () => {
     await deleteBlocks(api, [uuid, 'a']);
     expect(api.Editor.removeBlock).toHaveBeenCalledTimes(2);
     await expect(deleteBlocks(api, ['nope'])).rejects.toMatchObject({ message: expect.stringContaining('Could not delete'), cause: expect.any(Error) });
+  });
+});
+
+describe('saveTitle', () => {
+  it('rewrites the first non-property line and keeps a heading\'s #', async () => {
+    const api = graph();
+    await saveTitle(api, 'a', 'New name');
+    expect(api.Editor.updateBlock).toHaveBeenCalledWith('a', 'New name\nrun:: a\ngre:: 1.27');
+    await saveTitle(api, 'h', 'Seeds');
+    expect(api.Editor.updateBlock).toHaveBeenLastCalledWith('h', '## Seeds\nreport:: x');
+  });
+  it('adds a title line to a block that has none, and removes it when emptied', async () => {
+    const api = graph();
+    await saveTitle(api, 'a', '');
+    expect(api.Editor.updateBlock).toHaveBeenLastCalledWith('a', 'run:: a\ngre:: 1.27');
+    await saveTitle(api, 'a', 'Back');
+    expect(api.Editor.updateBlock).toHaveBeenLastCalledWith('a', 'Back\nrun:: a\ngre:: 1.27');
   });
 });

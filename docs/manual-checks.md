@@ -117,3 +117,9 @@
 - Scroll a long table: the header row stays at the top.
 - `power[W]:: 5` shows as `power` / `W · number`; a Logseq property with `[]` in its name is accepted.
 - `f` toggles full screen with the table focused and from the page body; Esc no longer leaves it.
+
+## v0.2.3
+
+- Right-click a row → Delete row works (the menu stays open while the focus moves to it).
+- Full screen: click a row label → full screen ends, then the page jumps to the block.
+- Double-click a row label → rename in place; the block's first line changes.

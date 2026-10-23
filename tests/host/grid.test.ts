@@ -26,6 +26,8 @@ const mk = () => ({
   saveCell: vi.fn<(b: string, k: string, v: string) => Promise<void>>(async () => {}),
   addColumn: vi.fn(),
   addRow: vi.fn<(m: string) => Promise<string | undefined>>(async () => 'new'),
+  jump: vi.fn<(u: string) => Promise<void>>(async () => {}),
+  saveTitle: vi.fn<(b: string, t: string) => Promise<void>>(async () => {}),
   deleteRow: vi.fn<(m: string, i: number) => Promise<void>>(async () => {}),
   setImg: vi.fn(async () => {}),
 });
@@ -381,5 +383,56 @@ describe('right-click menu', () => {
     press(document.body, 'mousedown');
     expect(document.querySelector('.dq-menu')).toBeNull();
     expect(deps.deleteRow).not.toHaveBeenCalled();
+  });
+});
+
+describe('row label', () => {
+  const label = (row: number) => document.querySelector<HTMLElement>(`tr[data-row="${row}"] td[data-label]`)!;
+  const clickEv = (el: Element) => el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+  afterEach(() => vi.useRealTimers());
+
+  it('a click goes to the block after a beat', () => {
+    vi.useFakeTimers();
+    clickEv(label(1));
+    expect(deps.jump).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(300);
+    expect(deps.jump).toHaveBeenCalledWith('b');
+  });
+
+  it('a click in full screen leaves it first, then goes', () => {
+    vi.useFakeTimers();
+    document.querySelector<HTMLElement>('.dq-side [data-act="full"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(ui.isFull('m')).toBe(true);
+    clickEv(label(0));
+    vi.advanceTimersByTime(300);
+    expect(ui.isFull('m')).toBe(false);
+    expect(document.querySelector('.dq')!.classList.contains('dq-full')).toBe(false);
+    expect(deps.jump).toHaveBeenCalledWith('a');
+  });
+
+  it('a double-click renames the row instead of going', () => {
+    vi.useFakeTimers();
+    clickEv(label(0));
+    clickEv(label(0));
+    label(0).dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    vi.advanceTimersByTime(300);
+    expect(deps.jump).not.toHaveBeenCalled();
+    const input = label(0).querySelector<HTMLInputElement>('input')!;
+    expect(input.value).toBe('A');
+    input.value = 'Renamed';
+    keyOn(input, 'Enter');
+    expect(deps.saveTitle).toHaveBeenCalledWith('a', 'Renamed');
+    expect(deps.saveCell).not.toHaveBeenCalled();
+  });
+});
+
+describe('right-click menu and focus', () => {
+  it('survives the focus moving to the menu button', () => {
+    click(cell(1, 'x'));
+    cell(1, 'x').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    tbl().dispatchEvent(new FocusEvent('blur'));
+    tbl().dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    expect(document.querySelector('.dq-menu')).not.toBeNull();
   });
 });

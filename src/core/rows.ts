@@ -22,6 +22,8 @@ export interface Conflict { value: string; pageTitle: string }
 export interface Row {
   id: string;
   title: string;
+  /** The block has a title line of its own (else `title` is its parent's, or empty). */
+  titleOwn?: boolean;
   values: Record<string, string>;
   /** Highest priority first; `sources[0]` is where clicks jump to. */
   sources: Source[];
@@ -49,6 +51,7 @@ export function blockToRow(b: SourceBlock): Row | null {
     id: b.uuid,
     // A block that holds only properties is named after its parent: `## Item` over `- status:: ok`.
     title: title || b.parentTitle || '',
+    titleOwn: !!title,
     values: props,
     sources: [{ uuid: b.uuid, pageTitle: b.pageTitle, journalDay: b.journalDay }],
     conflicts: {},

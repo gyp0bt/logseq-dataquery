@@ -4,7 +4,9 @@ import { chartOf, errorHtml, tableToggleText, toCsv, type ViewData } from '../co
 import { Grid } from './grid';
 import { TableTools, type TableDeps } from './tableTools';
 
-export interface InteractDeps extends Pick<TableDeps, 'saveCell' | 'addColumn' | 'addRow' | 'setImg'> {
+export interface InteractDeps extends Pick<TableDeps, 'saveCell' | 'saveTitle' | 'addColumn' | 'addRow' | 'setImg'> {
+  /** Go to a block. */
+  jump?(uuid: string): Promise<void>;
   /** Delete the block(s) of table row `index` of a macro. */
   deleteRow?(macroUuid: string, index: number): Promise<void>;
   /** Write a valid query back into the macro. */
@@ -38,8 +40,10 @@ export const SHIELDED_EVENTS = [
   'keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend',
   'mousedown', 'mouseup', 'click', 'dblclick', 'pointerdown', 'pointerup', 'selectstart', 'copy', 'cut', 'paste',
 ] as const;
+/** How long a click on a row label waits for a second click. */
+export const LABEL_CLICK_MS = 250;
 /** What closes the right-click menu. */
-const AWAY = ['mousedown', 'keydown', 'wheel', 'blur'];
+const AWAY = ['mousedown', 'keydown', 'wheel'];
 /** Table cells a double-click or click turns into a field (cell value, new column name). */
 const TABLE_CELLS = '.dq-tbl td[data-col], .dq-tbl th.dq-addcol';
 const RELEASES = new Set(['mouseup', 'pointerup', 'click']);
@@ -339,6 +343,8 @@ export class Interact {
       return;
     }
     if (this.table.onClick(e)) return;
+    const label = t?.closest?.<HTMLElement>('.dq-tbl td[data-label]');
+    if (label && !label.querySelector('input')) return this.labelClick(label);
     const summary = t?.closest?.('.dq-cols > summary') as HTMLElement | null;
     if (summary) return this.toggleCols(e, summary);
     const fold = t?.closest?.('.dq-fold [data-act="table"]') as HTMLElement | null;
@@ -347,6 +353,23 @@ export class Interact {
     if (act) return this.sideAction(act);
     const pt = t?.closest?.('.dq-pt') as SVGElement | null;
     if (pt) this.highlightRow(pt);
+  }
+
+  private jumpTimer?: ReturnType<typeof setTimeout>;
+
+  /**
+   * A click on a row's label goes to its block, after a beat so a double-click (rename) can cancel
+   * it. A full-screen view is left first: the block would open hidden behind it.
+   */
+  private labelClick(td: HTMLElement): void {
+    const uuid = td.dataset.uuid;
+    const view = td.closest<HTMLElement>('.dq');
+    if (!uuid || !this.deps.jump) return;
+    clearTimeout(this.jumpTimer);
+    this.jumpTimer = setTimeout(() => {
+      this.leaveFull(view);
+      this.deps.jump!(uuid).catch((err) => this.deps.report(err));
+    }, LABEL_CLICK_MS);
   }
 
   /** Right-click on a table row: a small menu next to the pointer. */
@@ -489,6 +512,7 @@ export class Interact {
 
   /** On a trace (legend entry, marker, line, band) it hides or shows that trace; elsewhere on the plot it resets the zoom. */
   private onDblClick(e: MouseEvent): void {
+    clearTimeout(this.jumpTimer);
     if (this.table.onDblClick(e)) return;
     const t = e.target as Element | null;
     const box = t?.closest?.('.dq-chartbox') as HTMLElement | null;

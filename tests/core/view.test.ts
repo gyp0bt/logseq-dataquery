@@ -58,7 +58,7 @@ describe('renderInline', () => {
     expect(both.match(/<tr data-uuid="[ab]" data-row="\d" data-key="0">/g)).toHaveLength(2);
     expect(html).toContain('2 rows');
     expect(html).toContain('⚠ 1');
-    expect(html).toContain('data-on-click="dqJump" data-uuid="b"');
+    expect(html).toContain('data-label="1" title="Click: go to the block. Double-click: rename" data-uuid="b"');
     expect(html).toContain('dq-num dq-pass');
     expect(html).toContain('title="1.27 (Sep 28th) / 1.72 (Sep 27th)"');
     expect(html).toContain('<div class="dq-side" data-on-click="dqNoop" data-macro="m">');

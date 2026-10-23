@@ -13,6 +13,8 @@ export interface TableDeps {
   saveCell?(blockUuid: string, key: string, value: string): Promise<void>;
   /** Show a column added with `+` until a block holds it (transient: the macro does not change). */
   addColumn?(macroUuid: string, key: string): void;
+  /** Rename a row: write the title line of its block. */
+  saveTitle?(blockUuid: string, title: string): Promise<void>;
   /** Add a row below the last one (a block under the last row's block); resolves to its uuid. */
   addRow?(macroUuid: string): Promise<string | undefined>;
   /** Ctrl+wheel over a table image: write the height it ended on as `img:`. */
@@ -138,11 +140,31 @@ export class TableTools {
 
   /** Double-click on a data cell: true when it was one (edited, or refused with a message). */
   onDblClick(e: MouseEvent): boolean {
-    const td = (e.target as Element | null)?.closest?.('.dq-tbl td[data-col]') as HTMLElement | null;
+    const td = (e.target as Element | null)?.closest?.('.dq-tbl td[data-col], .dq-tbl td[data-label]') as HTMLElement | null;
     if (!td || td.querySelector('input')) return false;
     e.preventDefault();
     e.stopPropagation();
-    this.edit(td, false);
+    if (td.dataset.label) this.editLabel(td);
+    else this.edit(td, false);
+    return true;
+  }
+
+  /** Open the editor on a row's label: the title line of its block. */
+  editLabel(td: HTMLElement): boolean {
+    const tbl = td.closest<HTMLElement>('.dq-tbl');
+    const tr = td.closest<HTMLElement>('tr[data-row]');
+    const data = tbl?.dataset.macro ? this.deps.view(tbl.dataset.macro) : undefined;
+    const row = tr ? data?.result.rows[Number(tr.dataset.row)] : undefined;
+    if (!data || !row) return false;
+    if (data.query.by) {
+      this.deps.notify(`The label is the value of by:${data.query.by}; edit that column instead.`);
+      return false;
+    }
+    const raw = row.titleOwn === false ? '' : row.title;
+    const input = this.open(td, 'dq-cellin', raw, 'Row name (the first line of its block): Enter to save, Esc to cancel');
+    input.dataset.block = row.sources[0].uuid;
+    input.dataset.kind = 'title';
+    input.dataset.orig = raw;
     return true;
   }
 
@@ -313,8 +335,9 @@ export class TableTools {
     if (tbl) this.keepScroll(tbl);
     // Shown at once; the repaint after Logseq saves draws it properly (images, colours).
     ed.cell.textContent = value.trim();
-    if (!this.deps.saveCell) return this.deps.report(new Error('Cell editing is not available here.'));
-    this.deps.saveCell(block!, key!, value).catch((err) => {
+    if (!this.deps.saveCell || (ed.input.dataset.kind === 'title' && !this.deps.saveTitle)) return this.deps.report(new Error('Cell editing is not available here.'));
+    const save = ed.input.dataset.kind === 'title' ? this.deps.saveTitle?.(block!, value) : this.deps.saveCell(block!, key!, value);
+    (save ?? Promise.reject(new Error('Row renaming is not available here.'))).catch((err) => {
       if (ed.cell.isConnected) ed.cell.innerHTML = ed.html;
       this.deps.report(err);
     });

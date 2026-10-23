@@ -94,7 +94,7 @@ export function tableHtml(result: QueryResult, q: Query, uuid: string, opts: Tab
       // colour), else `by` (one merged row).
       const gk = q.color ?? q.by;
       const key = gk && r.values[gk] !== undefined ? ` data-key="${esc(canonical(r.values[gk]))}"` : '';
-      return `<tr data-uuid="${esc(r.sources[0].uuid)}" data-row="${i}"${key}><td class="dq-link" data-on-click="dqJump" data-uuid="${esc(r.sources[0].uuid)}">${esc(rowLabel(r, by))}</td>${cells}<td></td></tr>`;
+      return `<tr data-uuid="${esc(r.sources[0].uuid)}" data-row="${i}"${key}><td class="dq-link" data-label="1" title="Click: go to the block. Double-click: rename" data-uuid="${esc(r.sources[0].uuid)}">${esc(rowLabel(r, by))}</td>${cells}<td></td></tr>`;
     })
     .join('');
   const add = '<th class="dq-addcol" data-act="addcol" title="Add a property">+</th>';

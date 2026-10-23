@@ -167,3 +167,22 @@ export async function deleteBlocks(api: LogseqLike, uuids: string[]): Promise<vo
     }
   }
 }
+
+/** Set the title line of a block (its first line that is not a property), keeping a heading's `#`s. */
+export async function saveTitle(api: LogseqLike, uuid: string, title: string): Promise<void> {
+  const block = await getBlock(api, uuid);
+  if (!block) throw new Error('That block no longer exists.');
+  const t = title.replace(/[\r\n]+/g, ' ').trim();
+  const lines = String(block.content ?? '').split('\n');
+  const i = lines.findIndex((l) => l.trim() && !/^\s*[^\s:]+::/.test(l));
+  if (i >= 0) {
+    const prefix = /^\s*#+\s+/.exec(lines[i])?.[0] ?? '';
+    if (t) lines[i] = prefix + t;
+    else lines.splice(i, 1);
+  } else if (t) lines.unshift(t);
+  try {
+    await api.Editor.updateBlock(uuid, lines.join('\n'));
+  } catch (e) {
+    throw new Error('Could not save the row name to the block.', { cause: e });
+  }
+}

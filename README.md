@@ -110,6 +110,7 @@ Click a cell and the table takes the keyboard (Logseq does not see those keys un
 | Ctrl+C / X / V | Copy / cut / paste. Copies tab-separated text **and** an HTML table, so Excel and Google Sheets paste it as cells (a browser clipboard cannot carry an .xlsx file). Pasting a block of cells writes each into its block |
 | Ctrl+V with a picture | Puts the picture into the cell. Logseq gives plugins no way to write into `assets/`, so it is stored in the cell as a `data:` URL (scaled to ≤ 1024 px) |
 | Enter on the last row, or the **+** row | Adds a row: a new block below the last row's block, carrying a header line (`row 3`), `tags::` and any `key==value` of the query |
+| Click a row's label / double-click it | Go to its block (a full-screen view is left first) / rename it (writes the first line of the block; not with `by:`) |
 | Right-click a row | Menu with **Delete row** (removes the row's block; Logseq's undo brings it back) |
 | `f` or ⛶ | Toggle full screen (Esc does not leave it). So typing starts a cell with any key except a lower-case `f`: use F2, double-click or Shift+F for text starting with it |
 
@@ -160,6 +161,7 @@ Works with Logseq 0.10.x (Markdown/file graphs).
 - **表は表計算ソフトのように使えます。** セルをクリックすると矢印キー・Tab・Enter で移動、そのまま打てば編集、Delete で消去。ドラッグで範囲選択し、Ctrl+C でコピー（Excel / スプレッドシートにセルとして貼れます）。Ctrl+V で貼り付け、画像も貼れます。
 - **数式**: セルを `=` で始めると数式（例 `=score*loss`）。同じ行のセルを列名で参照でき、`sum` `avg` `round` `if` などの関数が使えます。入力中に矢印キーやクリックでセルを指定できます。
 - **行の追加**: 最終行で Enter、または表の下の **+**。最後の行のブロックの直下に新しいブロックを作ります。
+- 行ラベルのクリックでブロックへ移動（全画面なら先に解除）、ダブルクリックでラベル（ブロック先頭行）の編集。
 - **`f`** または **⛶** で全画面の切替（Esc では戻りません）。行を右クリックすると **Delete row** が出ます。
 - 属性名が `power[W]` のように `[]` つきなら `W` を単位として認識します（無ければ `-`、無次元）。
 - `by:` を使わないとき、ブロックのラベルは親ブロックの文字列になります（`## CheckItem1` の子 `id:: abc` → `CheckItem1`）。
@@ -173,6 +175,7 @@ Works with Logseq 0.10.x (Markdown/file graphs).
 - **表格像电子表格一样使用**：点击单元格后，方向键 / Tab / Enter 移动，直接输入即编辑，Delete 清除。拖动选择区域，Ctrl+C 复制（可作为单元格粘贴到 Excel / 表格软件），Ctrl+V 粘贴，也可粘贴图片。
 - **公式**：以 `=` 开头（如 `=score*loss`），可按列名引用同一行的其他单元格，支持 `sum`、`avg`、`round`、`if` 等函数。输入公式时可用方向键或点击选取单元格。
 - **添加行**：在最后一行按 Enter，或点击表格下方的 **+**，会在最后一行所在块的下方新建一个块。
+- 点击行标签跳转到块（全屏时先退出），双击可重命名。
 - **`f`** 或 **⛶** 切换全屏（Esc 不再退出）。右键点击行可 **Delete row**。
 - 属性名如 `power[W]` 的方括号内视为单位 `W`（没有则为 `-`，无量纲）。
 - 不使用 `by:` 时，块的标签为其父块的文本（`## CheckItem1` 下的 `id:: abc` 显示为 `CheckItem1`）。
