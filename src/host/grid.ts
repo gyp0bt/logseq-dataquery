@@ -29,8 +29,8 @@ export class Grid {
     private doc: Document,
     private deps: GridDeps,
     private tools: TableTools,
-    /** Esc: leave full screen if the table is in it; true when it did. */
-    private exitFull: (tbl: HTMLElement) => boolean,
+    /** `f`: toggle the full screen of the view the table is in. */
+    private toggleFull: (tbl: HTMLElement) => void,
   ) {
     tools.onEditEnd = (cell, move) => this.afterEdit(cell, move);
   }
@@ -214,10 +214,13 @@ export class Grid {
         if (td) this.tools.edit(td, false);
         return;
       }
+      case 'f':
+        if (mod || e.altKey) break;
+        e.preventDefault();
+        return this.toggleFull(tbl);
       case 'Escape': {
         e.preventDefault();
         if (a.r !== h.r || a.c !== h.c) return this.select(tbl, h, h);
-        if (this.exitFull(tbl)) return;
         if (sv) sv.active = false;
         return;
       }

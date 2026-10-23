@@ -108,3 +108,12 @@
 - Ctrl+V a screenshot into a cell: thumbnail shows; the block text holds a `data:image/…` URL.
 - Enter on the last row, and the **+** row: a new block appears below the last row's block and the row shows at once.
 - Formula: `=` then arrow keys / click pick same-row columns; `#ERR` on a cycle.
+
+## v0.2.2: row menu, units, `f`
+
+- Right-click a row: menu appears at the pointer; Delete row removes the block; Ctrl+Z in Logseq restores it.
+- Add a row, then type into one of its cells: the row stays (its first line is `row N`).
+- Editing a cell: the cell frame itself is the input; no inner box.
+- Scroll a long table: the header row stays at the top.
+- `power[W]:: 5` shows as `power` / `W · number`; a Logseq property with `[]` in its name is accepted.
+- `f` toggles full screen with the table focused and from the page body; Esc no longer leaves it.

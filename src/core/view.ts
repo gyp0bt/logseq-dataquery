@@ -1,3 +1,4 @@
+import { splitUnit } from './unit';
 import { barSvg, legendHtml, scatterSvg, type Chart, type ChartOpts } from './chart';
 import { IMG_DEFAULT, type Kind, type ParseResult, type Query } from './dsl';
 import { esc } from './html';
@@ -69,7 +70,8 @@ export function tableHtml(result: QueryResult, q: Query, uuid: string, opts: Tab
   const head = cols
     .map((k) => {
       const t = result.types[k] ?? 'string';
-      return `<th class="dq-sortable${alignRight(t) ? ' dq-num' : ''}"${sortAttrs(uuid, k, q)}>${esc(k)}${arrowOf(k, q)}<span class="dq-type">${t}</span></th>`;
+      const { name, unit } = splitUnit(k);
+      return `<th class="dq-sortable${alignRight(t) ? ' dq-num' : ''}"${sortAttrs(uuid, k, q)}>${esc(name)}${arrowOf(k, q)}<span class="dq-type" title="unit: ${esc(unit)}">${esc(unit)} · ${t}</span></th>`;
     })
     .join('');
   const first = by ? `<th class="dq-sortable"${sortAttrs(uuid, by, q)}>${esc(by)}${arrowOf(by, q)}</th>` : '<th>block</th>';

@@ -1,3 +1,4 @@
+import { normKey } from './unit';
 const PROP_LINE = /^\s*([^\s:]+)::(?:\s+(.*))?\s*$/;
 
 const BUILTIN_KEYS = new Set([
@@ -31,7 +32,7 @@ export function parseContent(content: string): ParsedContent {
     if (inFence) continue;
     const m = PROP_LINE.exec(line);
     if (m) {
-      const key = m[1].toLowerCase();
+      const key = normKey(m[1]);
       const value = (m[2] ?? '').trim();
       if (value !== '' && !isBuiltinKey(key) && !(key in props)) props[key] = value;
       continue;

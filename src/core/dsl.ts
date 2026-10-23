@@ -1,3 +1,4 @@
+import { normKey } from './unit';
 import { isNumberText } from './types';
 
 export type Kind = 'table' | 'scatter' | 'bar';
@@ -44,7 +45,7 @@ class DslSyntaxError extends Error {
 }
 
 // Any Logseq property key (Unicode, `done?`), minus characters the query itself uses.
-const KEY = /^[^\s<>=!|,()"*:{}[\]]+$/;
+const KEY = /^[^\s<>=!|,()"*:{}[\]]+(\[[^\s<>=!|,()"*:{}[\]]+\])?$/;
 // Two-character operators first so `<=` is not read as `<`.
 const OPS = ['==', '!=', '<=', '>=', '<', '>', '='] as const;
 const NUMERIC_OPS: CmpOp[] = ['<', '<=', '>', '>='];
@@ -114,7 +115,7 @@ const unquote = (s: string) => (/^"[\s\S]*"$/.test(s) ? s.slice(1, -1) : s);
 
 function key(s: string, at: number): string {
   if (!KEY.test(s)) throw new DslSyntaxError(`'${s}' is not a property key.`, at);
-  return s.toLowerCase();
+  return normKey(s);
 }
 
 export function parseQuery(text: string): ParseResult {
@@ -154,7 +155,7 @@ function parseOrThrow(text: string): Query {
       continue;
     }
     if (!KEY.test(t.s)) throw new DslSyntaxError(`Cannot read '${t.s}'. Example: #tag, seed==0, x:gre-thin or gre-thin.`, t.at);
-    q.conds.push({ kind: 'has', key: t.s.toLowerCase() });
+    q.conds.push({ kind: 'has', key: normKey(t.s) });
   }
   return q;
 }

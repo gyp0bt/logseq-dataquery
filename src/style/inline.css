@@ -119,7 +119,9 @@
 .dq-tbl td[data-col] { cursor: text; }
 .dq-addcol { cursor: pointer; color: var(--dq-muted); text-align: center; min-width: 1.6em; }
 .dq-addcol:hover { color: var(--dq-accent); }
-.dq-cellin, .dq-keyin { box-sizing: border-box; width: 100%; min-width: 6em; font: inherit; color: var(--dq-fg); background: var(--dq-code); border: 1px solid var(--dq-accent); border-radius: 3px; padding: 0 4px; }
+/* The cell frame is the input box: the field fills the cell and shows no border of its own. */
+.dq-cellin, .dq-keyin { display: block; box-sizing: border-box; width: 100%; height: 100%; min-width: 6em; font: inherit; line-height: inherit; color: var(--dq-fg); background: transparent; border: 0; border-radius: 0; margin: 0; padding: 0.35em 0.75em; }
+.dq td:has(> .dq-cellin), .dq th:has(> .dq-keyin) { padding: 0; background: var(--dq-bg); outline: 2px solid var(--dq-accent); outline-offset: -2px; }
 .dq-cellin:focus, .dq-keyin:focus { outline: none; }
 /* Spreadsheet grid: the table takes the keyboard while it has the focus; cells are selected, not text. */
 .dq-tbl:focus { outline: none; }
@@ -141,3 +143,9 @@
 .dq.dq-full .dq-tbl { max-height: none; flex: 1 1 auto; min-height: 0; }
 .dq.dq-full .dq-fold { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .dq.dq-full .dq-chartbox { flex: 0 0 auto; }
+/* Right-click menu on a table row. */
+.dq-menu { position: fixed; z-index: 10001; min-width: 9em; padding: 3px; background: var(--dq-bg, #fff); border: 1px solid var(--dq-line, #ccc); border-radius: 4px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
+.dq-menuitem { display: block; width: 100%; text-align: left; font: inherit; color: var(--dq-fail, #c00); background: transparent; border: 0; border-radius: 3px; padding: 4px 8px; cursor: pointer; }
+.dq-menuitem:hover { background: var(--dq-code, #eee); }
+/* The header row stays at the top while the table scrolls. */
+.dq-tbl thead th { position: sticky; top: 0; z-index: 2; background: var(--dq-bg); box-shadow: inset 0 -1px 0 var(--dq-line); border-bottom: 0; }

@@ -156,3 +156,14 @@ export async function insertRow(api: LogseqLike, afterUuid: string, content: str
   if (!made?.uuid) throw new Error('Logseq did not return the new block.');
   return made.uuid;
 }
+
+/** Delete the blocks of a table row. Logseq's undo brings them back. */
+export async function deleteBlocks(api: LogseqLike, uuids: string[]): Promise<void> {
+  for (const uuid of uuids) {
+    try {
+      await api.Editor.removeBlock(uuid);
+    } catch (e) {
+      throw new Error('Could not delete the row\'s block.', { cause: e });
+    }
+  }
+}

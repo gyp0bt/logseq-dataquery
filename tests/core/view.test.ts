@@ -261,3 +261,18 @@ describe('table cells: images, edit targets, + column', () => {
     expect(view('table', '', result([row('a', { gre: '1' })], ['gre']))).not.toContain('data-name="img"');
   });
 });
+
+describe('table header units', () => {
+  it('shows the name, then the unit (or "-") with the type', async () => {
+    const { runQuery } = await import('../../src/core/query');
+    const { parseQuery } = await import('../../src/core/dsl');
+    const blk = (n: number) => ({ uuid: `b${n}`, content: `T${n}\npower[W]:: ${n}\nseed:: ${n}`, page: 'p', pageTitle: 'P', journalDay: null, pathRefs: [], preBlock: false, seq: n });
+    const parsed = parseQuery('');
+    if (!parsed.ok) throw new Error('bad query');
+    const result = runQuery(parsed.query, 'table', { blocks: [blk(1), blk(2)], types: { 'power[W]': 'number', seed: 'number' }, macroUuid: 'm' });
+    const html = renderInline({ kind: 'table', macroUuid: 'm', dsl: '', parsed, result });
+    expect(html).toContain('power<');
+    expect(html).toContain('>W · number<');
+    expect(html).toContain('>- · number<');
+  });
+});

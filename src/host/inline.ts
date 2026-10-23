@@ -66,6 +66,13 @@ export class InlineViews {
     this.pending.set(macroUuid, [...(this.pending.get(macroUuid) ?? []), row]);
   }
 
+  /** A row's block was deleted: it is no longer pending. */
+  dropPending(macroUuid: string, blockUuid: string): void {
+    const left = (this.pending.get(macroUuid) ?? []).filter((r) => r.sources[0].uuid !== blockUuid);
+    if (left.length) this.pending.set(macroUuid, left);
+    else this.pending.delete(macroUuid);
+  }
+
   /** The graph changed: rows added in the old one mean nothing now. */
   clearPending(): void {
     this.pending.clear();

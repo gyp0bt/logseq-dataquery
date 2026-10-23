@@ -26,6 +26,7 @@ const mk = () => ({
   saveCell: vi.fn<(b: string, k: string, v: string) => Promise<void>>(async () => {}),
   addColumn: vi.fn(),
   addRow: vi.fn<(m: string) => Promise<string | undefined>>(async () => 'new'),
+  deleteRow: vi.fn<(m: string, i: number) => Promise<void>>(async () => {}),
   setImg: vi.fn(async () => {}),
 });
 let deps: ReturnType<typeof mk>;
@@ -327,23 +328,58 @@ describe('clipboard', () => {
 });
 
 describe('full screen', () => {
-  it('the ⛶ button fills the window and Esc leaves it', () => {
+  const full = () => document.querySelector('.dq')!.classList.contains('dq-full');
+
+  it('the ⛶ button toggles it', () => {
     const btn = document.querySelector<HTMLElement>('.dq-side [data-act="full"]')!;
     btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    expect(document.querySelector('.dq')!.classList.contains('dq-full')).toBe(true);
+    expect(full()).toBe(true);
     expect(ui.isFull('m')).toBe(true);
-    click(cell(0, 'x'));
-    keyOn(tbl(), 'ArrowDown', { shiftKey: true });
-    keyOn(tbl(), 'Escape');
-    expect(document.querySelector('.dq')!.classList.contains('dq-full')).toBe(true);
-    keyOn(tbl(), 'Escape');
-    expect(document.querySelector('.dq')!.classList.contains('dq-full')).toBe(false);
-    expect(ui.isFull('m')).toBe(false);
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(full()).toBe(false);
   });
 
-  it('Esc leaves it from anywhere in the view, and a repaint keeps it', () => {
+  it('f toggles it while the table has the focus, and Esc does not leave it', () => {
+    click(cell(0, 'x'));
+    keyOn(tbl(), 'f');
+    expect(full()).toBe(true);
+    expect(deps.saveCell).not.toHaveBeenCalled();
+    expect(cell(0, 'x').querySelector('input')).toBeNull();
+    keyOn(tbl(), 'Escape');
+    expect(full()).toBe(true);
+    keyOn(tbl(), 'f');
+    expect(full()).toBe(false);
+  });
+
+  it('f from the page body leaves a full-screen view, and a capital F still types', () => {
     document.querySelector<HTMLElement>('.dq-side [data-act="full"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    keyOn(document.querySelector('.dq-meta')!, 'Escape');
-    expect(document.querySelector('.dq')!.classList.contains('dq-full')).toBe(false);
+    keyOn(document.body, 'f');
+    expect(full()).toBe(false);
+    click(cell(0, 'x'));
+    keyOn(tbl(), 'F', { shiftKey: true });
+    expect(cell(0, 'x').querySelector('input')).not.toBeNull();
+    expect(full()).toBe(false);
+  });
+});
+
+describe('right-click menu', () => {
+  const rightClick = (el: Element) => el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 20 }));
+
+  it('offers Delete row and deletes the row', () => {
+    const e = rightClick(cell(1, 'x'));
+    expect(e).toBe(false);
+    const item = document.querySelector<HTMLElement>('.dq-menu .dq-menuitem')!;
+    expect(item.textContent).toBe('Delete row');
+    item.click();
+    expect(deps.deleteRow).toHaveBeenCalledWith('m', 1);
+    expect(document.querySelector('.dq-menu')).toBeNull();
+  });
+
+  it('closes when the user presses elsewhere', () => {
+    rightClick(cell(0, 'x'));
+    expect(document.querySelector('.dq-menu')).not.toBeNull();
+    press(document.body, 'mousedown');
+    expect(document.querySelector('.dq-menu')).toBeNull();
+    expect(deps.deleteRow).not.toHaveBeenCalled();
   });
 });

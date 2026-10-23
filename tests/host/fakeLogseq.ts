@@ -67,6 +67,11 @@ export function fakeLogseq(pages: Record<string, FakeBlock[]>) {
         flat.splice(flat.indexOf(at) + 1, 0, { b, id: next++, parentId: at.parentId, pageId: at.pageId });
         return { uuid: b.uuid };
       }),
+      removeBlock: vi.fn(async (uuid: string) => {
+        const at = byUuid(uuid);
+        if (!at) throw new Error('no such block');
+        flat.splice(flat.indexOf(at), 1);
+      }),
       scrollToBlockInPage: vi.fn((_p: string, _u: string) => {}),
       // Property lines are `key:: value` after the first line; enough for the table's cell edits.
       upsertBlockProperty: vi.fn(async (uuid: string, key: string, value: unknown) => {

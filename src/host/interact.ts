@@ -5,6 +5,8 @@ import { Grid } from './grid';
 import { TableTools, type TableDeps } from './tableTools';
 
 export interface InteractDeps extends Pick<TableDeps, 'saveCell' | 'addColumn' | 'addRow' | 'setImg'> {
+  /** Delete the block(s) of table row `index` of a macro. */
+  deleteRow?(macroUuid: string, index: number): Promise<void>;
   /** Write a valid query back into the macro. */
   submit(uuid: string, dsl: string): Promise<void>;
   /** What the view of a macro last showed, to redraw its chart or copy its table. */
@@ -36,6 +38,8 @@ export const SHIELDED_EVENTS = [
   'keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend',
   'mousedown', 'mouseup', 'click', 'dblclick', 'pointerdown', 'pointerup', 'selectstart', 'copy', 'cut', 'paste',
 ] as const;
+/** What closes the right-click menu. */
+const AWAY = ['mousedown', 'keydown', 'wheel', 'blur'];
 /** Table cells a double-click or click turns into a field (cell value, new column name). */
 const TABLE_CELLS = '.dq-tbl td[data-col], .dq-tbl th.dq-addcol';
 const RELEASES = new Set(['mouseup', 'pointerup', 'click']);
@@ -85,7 +89,7 @@ export class Interact {
 
   constructor(private doc: Document, private deps: InteractDeps) {
     this.table = new TableTools(doc, { ...deps, addRow: (m) => this.grid.addRowFor(m) });
-    this.grid = new Grid(doc, deps, this.table, (tbl) => this.leaveFull(tbl.closest<HTMLElement>('.dq')));
+    this.grid = new Grid(doc, deps, this.table, (tbl) => this.toggleFull(tbl.closest<HTMLElement>('.dq')));
   }
 
   install(): () => void {
@@ -97,6 +101,7 @@ export class Interact {
       ['focusout', (e) => this.onFocusOut(e as FocusEvent), true],
       ['click', (e) => this.onClick(e as MouseEvent), true],
       ['dblclick', (e) => this.onDblClick(e as MouseEvent), true],
+      ['contextmenu', (e) => this.onContext(e as MouseEvent), true],
       ['mousemove', (e) => this.grid.onMouseMove(e as MouseEvent), true],
       ['mouseup', () => this.grid.onMouseUp(), true],
       ['mouseover', (e) => this.onOver(e as MouseEvent), true],
@@ -131,6 +136,7 @@ export class Interact {
       for (const [t, f, cap] of bound) this.doc.removeEventListener(t, f, cap);
       for (const t of SHIELDED_EVENTS) win.removeEventListener(t, shield, true);
       this.doc.removeEventListener('wheel', wheel);
+      this.closeMenu();
       this.tipEl?.remove();
       this.tipEl = undefined;
     };
@@ -251,16 +257,18 @@ export class Interact {
     if (tbl && GRID_EVENTS.has(e.type)) {
       if (e.type === 'keydown') {
         this.grid.onKey(e as KeyboardEvent, tbl);
-        if (['Escape', 'Enter', 'Tab'].includes((e as KeyboardEvent).key)) this.swallowKeyUp = (e as KeyboardEvent).key;
+        if (['Escape', 'Enter', 'Tab', 'f'].includes((e as KeyboardEvent).key)) this.swallowKeyUp = (e as KeyboardEvent).key;
       } else if (e.type === 'copy' || e.type === 'cut') this.grid.onCopy(e as ClipboardEvent, tbl, e.type === 'cut');
       else if (e.type === 'paste') this.grid.onPaste(e as ClipboardEvent, tbl);
       return stopAll(e);
     }
-    // Esc leaves a full-screen view whatever has the focus in it.
-    if (e.type === 'keydown' && (e as KeyboardEvent).key === 'Escape' && !t?.closest?.(FIELD_SELECTOR)) {
-      const view = t?.closest?.<HTMLElement>('.dq-full') ?? (t === this.doc.body ? this.doc.querySelector<HTMLElement>('.dq-full') : null);
-      if (view && this.leaveFull(view)) {
-        this.swallowKeyUp = 'Escape';
+    // `f` toggles full screen from anywhere in a view (or from the page body while one is full).
+    const k = e as KeyboardEvent;
+    if (e.type === 'keydown' && k.key === 'f' && !k.ctrlKey && !k.metaKey && !k.altKey && !k.shiftKey && !t?.closest?.(FIELD_SELECTOR)) {
+      const view = t?.closest?.<HTMLElement>('.dq') ?? (t === this.doc.body ? this.doc.querySelector<HTMLElement>('.dq-full') : null);
+      if (view) {
+        this.toggleFull(view);
+        this.swallowKeyUp = 'f';
         return stopAll(e);
       }
     }
@@ -341,6 +349,47 @@ export class Interact {
     if (pt) this.highlightRow(pt);
   }
 
+  /** Right-click on a table row: a small menu next to the pointer. */
+  private onContext(e: MouseEvent): void {
+    const tr = (e.target as Element | null)?.closest?.<HTMLElement>('.dq-tbl tbody tr[data-row]');
+    const macro = tr?.closest<HTMLElement>('.dq')?.dataset.macro;
+    this.closeMenu();
+    if (!tr || !macro || !this.deps.deleteRow) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const index = Number(tr.dataset.row);
+    const n = this.deps.view(macro)?.result.rows[index]?.sources.length ?? 1;
+    const menu = this.doc.createElement('div');
+    menu.className = 'dq-menu';
+    menu.style.left = `${e.clientX}px`;
+    menu.style.top = `${e.clientY}px`;
+    const del = this.doc.createElement('button');
+    del.className = 'dq-menuitem';
+    del.textContent = n > 1 ? `Delete row (${n} blocks)` : 'Delete row';
+    del.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      this.closeMenu();
+      this.deps.deleteRow!(macro, index).catch((err) => this.deps.report(err));
+    });
+    menu.append(del);
+    menu.addEventListener('mousedown', (ev) => ev.stopPropagation());
+    this.doc.body.append(menu);
+    this.menuEl = menu;
+    const win: EventTarget = this.doc.defaultView ?? this.doc;
+    const away = (ev: Event) => {
+      if (menu.contains(ev.target as Node | null) || (ev.type === 'keydown' && (ev as KeyboardEvent).key !== 'Escape')) return;
+      for (const t of AWAY) win.removeEventListener(t, away, true);
+      if (this.menuEl === menu) this.closeMenu();
+    };
+    for (const t of AWAY) win.addEventListener(t, away, true);
+  }
+
+  private menuEl?: HTMLElement;
+  private closeMenu(): void {
+    this.menuEl?.remove();
+    this.menuEl = undefined;
+  }
+
   /** Cols ▾ opens and closes here (not natively), so its state is known and kept across repaints. */
   private toggleCols(e: MouseEvent, summary: HTMLElement): void {
     const det = summary.parentElement as HTMLDetailsElement;
@@ -402,7 +451,7 @@ export class Interact {
     this.draw(box);
   }
 
-  /** The view fills the window (⛶ or Esc to leave). A chart's folded table is opened, since it is what fills it. */
+  /** The view fills the window (⛶ or `f` toggles). A chart's folded table is opened, since it is what fills it. */
   private toggleFull(view: HTMLElement | null): void {
     const uuid = view?.dataset.macro;
     if (!view || !uuid) return;

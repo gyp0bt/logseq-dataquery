@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { errorText, jumpTo, readMacro, saveDsl, setSettingInMacro, toggleErrInMacro } from '../../src/host/actions';
+import { deleteBlocks, errorText, insertRow, jumpTo, readMacro, saveDsl, setSettingInMacro, toggleErrInMacro } from '../../src/host/actions';
 import { fetchOrder, fetchTypeOverrides, toSourceBlock } from '../../src/host/collect';
 import { Engine } from '../../src/host/engine';
 import { InlineViews } from '../../src/host/inline';
@@ -241,5 +241,16 @@ describe('InlineViews', () => {
     expect(provide.mock.calls[0][1]).toContain('Data query failed: Could not read blocks from the Logseq database. (cause: boom)');
     expect(err).toHaveBeenCalled();
     err.mockRestore();
+  });
+});
+
+describe('rows added and deleted', () => {
+  it('a new row is a block below the given one; deleting removes the blocks', async () => {
+    const api = graph();
+    const uuid = await insertRow(api, 'b', 'row 3\ntags:: [[work/nsb]]');
+    expect(api.Editor.insertBlock).toHaveBeenCalledWith('b', 'row 3\ntags:: [[work/nsb]]', { sibling: true, before: false });
+    await deleteBlocks(api, [uuid, 'a']);
+    expect(api.Editor.removeBlock).toHaveBeenCalledTimes(2);
+    await expect(deleteBlocks(api, ['nope'])).rejects.toMatchObject({ message: expect.stringContaining('Could not delete'), cause: expect.any(Error) });
   });
 });

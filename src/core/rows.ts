@@ -1,3 +1,4 @@
+import { normKey } from './unit';
 import { resolveFormulas } from './formula';
 import { parseContent } from './text';
 import { toList } from './types';
@@ -147,7 +148,7 @@ export function validatePropKey(key: string, cols: string[]): string | null {
   if (!key) return 'Type a property name.';
   if (/\s/.test(key)) return 'No spaces in a property name.';
   if (/[:,]/.test(key)) return "A property name cannot hold ':' or ','.";
-  if (key !== key.toLowerCase()) return `Use lower case: ${key.toLowerCase()}.`;
+  if (key !== normKey(key)) return `Use lower case: ${normKey(key)}.`;
   if (cols.includes(key)) return `'${key}' is already a column.`;
   return null;
 }

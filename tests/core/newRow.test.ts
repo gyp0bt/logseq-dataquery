@@ -10,14 +10,14 @@ const q = (dsl: string) => {
 
 describe('newRowFor', () => {
   it('references the pages of #tag and [[page]] terms through tags::', () => {
-    expect(newRowFor(q('#run [[Plan]]')).content).toBe('tags:: [[run]], [[plan]]');
+    expect(newRowFor(q('#run [[Plan]]'), 3).content).toBe('row 3\ntags:: [[run]], [[plan]]');
   });
   it('fills in key==value filters so the new row matches the query', () => {
     const n = newRowFor(q('#run kind==a'));
-    expect(n.content).toBe('tags:: [[run]]\nkind:: a');
+    expect(n.content).toBe('row 1\ntags:: [[run]]\nkind:: a');
     expect(n.values).toEqual({ kind: 'a' });
   });
   it('is empty for a query with nothing to copy', () => {
-    expect(newRowFor(q('')).content).toBe('');
+    expect(newRowFor(q('')).content).toBe('row 1');
   });
 });
