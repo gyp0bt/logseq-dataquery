@@ -109,7 +109,7 @@ async function main(): Promise<void> {
         const last = data.result.rows[data.result.rows.length - 1];
         const uuid = await insertRow(api, last ? last.sources[0].uuid : macro, made.content);
         // A block with no property of its own is no row to any query: show it until it gets one.
-        views.addPending(macro, { id: uuid, title: made.title, titleOwn: true, values: { ...made.values }, sources: [{ uuid, pageTitle: '', journalDay: null }], conflicts: {} });
+        views.addPending(macro, { id: uuid, title: made.title, titleOwn: true, titleBlock: uuid, values: { ...made.values }, sources: [{ uuid, pageTitle: '', journalDay: null }], conflicts: {} });
         engine.invalidate();
         await views.refreshAll();
         return uuid;

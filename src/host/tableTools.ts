@@ -160,9 +160,10 @@ export class TableTools {
       this.deps.notify(`The label is the value of by:${data.query.by}; edit that column instead.`);
       return false;
     }
-    const raw = row.titleOwn === false ? '' : row.title;
+    // A block without a title of its own is labelled by its ancestor: renaming writes to that block.
+    const raw = row.title;
     const input = this.open(td, 'dq-cellin', raw, 'Row name (the first line of its block): Enter to save, Esc to cancel');
-    input.dataset.block = row.sources[0].uuid;
+    input.dataset.block = row.titleBlock ?? row.sources[0].uuid;
     input.dataset.kind = 'title';
     input.dataset.orig = raw;
     return true;

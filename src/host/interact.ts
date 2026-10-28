@@ -120,6 +120,7 @@ export class Interact {
       ['auxclick', (e) => this.stopMiddle(e as MouseEvent), true],
       // `error` doesn't bubble, so only a capture listener sees a table image that failed to load.
       ['error', (e) => this.onImgError(e), true],
+      ['load', (e) => this.onImgLoad(e), true],
     ];
     const guard = (f: (e: Event) => void) => (e: Event) => {
       try {
@@ -155,6 +156,8 @@ export class Interact {
     }
     for (const view of views) {
       view.dataset.live = '1';
+      // Pictures that finished loading before this view was attached have fired their load already.
+      for (const img of view.querySelectorAll<HTMLImageElement>('img.dq-img')) if (img.complete) scaleImg(img);
       const uuid = view.dataset.macro;
       const fold = view.querySelector<HTMLElement>('.dq-fold');
       if (fold && uuid) setFold(fold, this.opened.has(uuid));
@@ -257,7 +260,9 @@ export class Interact {
     }
     const t = e.target as Element | null;
     // The focused table: keys and clipboard are its own; mouse events are not touched.
-    const tbl = t?.matches?.('.dq-tbl') ? (t as HTMLElement) : null;
+    let tbl = t?.matches?.('.dq-tbl') ? (t as HTMLElement) : null;
+    // The focus slipped to the page body but the cursor is still in a table: the keys are still its own.
+    if (!tbl && (t === this.doc.body || t === this.doc.documentElement) && GRID_EVENTS.has(e.type)) tbl = this.grid.activeTable();
     if (tbl && GRID_EVENTS.has(e.type)) {
       if (e.type === 'keydown') {
         this.grid.onKey(e as KeyboardEvent, tbl);
@@ -394,7 +399,16 @@ export class Interact {
       this.closeMenu();
       this.deps.deleteRow!(macro, index).catch((err) => this.deps.report(err));
     });
-    menu.append(del);
+    const ren = this.doc.createElement('button');
+    ren.className = 'dq-menuitem dq-menurename';
+    ren.textContent = 'Rename row';
+    ren.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      this.closeMenu();
+      const td = tr.querySelector<HTMLElement>('td[data-label]');
+      if (td) this.table.editLabel(td);
+    });
+    menu.append(ren, del);
     menu.addEventListener('mousedown', (ev) => ev.stopPropagation());
     this.doc.body.append(menu);
     this.menuEl = menu;
@@ -650,6 +664,16 @@ export class Interact {
   // ---- table pan ----
 
   /** A table image that failed to load shows as a marked box naming the URL it tried, so the cause is visible. */
+  /**
+   * Every table image is scaled so that the harmonic mean of its width and height, 2wh/(w+h), is the
+   * table's image size (`img:`). Wide, tall and square pictures of one column then look equally big,
+   * whatever their pixel size; CSS multiplies the size by these two factors.
+   */
+  private onImgLoad(e: Event): void {
+    const img = e.target as HTMLImageElement | null;
+    if (img?.tagName === 'IMG' && img.classList.contains('dq-img')) scaleImg(img);
+  }
+
   private onImgError(e: Event): void {
     const img = e.target as HTMLImageElement | null;
     if (!img || img.tagName !== 'IMG' || !img.classList.contains('dq-img')) return;
@@ -803,4 +827,13 @@ function clampToArea(svg: SVGSVGElement, p: { x: number; y: number }) {
   const a = areaOf(svg);
   if (!a) return p;
   return { x: Math.min(a.L + a.PW, Math.max(a.L, p.x)), y: Math.min(a.T + a.PH, Math.max(a.T, p.y)) };
+}
+
+/** Set the two factors that make 2wh/(w+h) of the picture equal the table's image size. */
+export function scaleImg(img: HTMLImageElement): void {
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  if (!w || !h) return;
+  img.style.setProperty('--kw', String((w + h) / (2 * h)));
+  img.style.setProperty('--kh', String((w + h) / (2 * w)));
 }

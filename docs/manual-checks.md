@@ -123,3 +123,11 @@
 - Right-click a row → Delete row works (the menu stays open while the focus moves to it).
 - Full screen: click a row label → full screen ends, then the page jumps to the block.
 - Double-click a row label → rename in place; the block's first line changes.
+
+## v0.2.4
+
+- Click a cell, then arrows / Shift+arrows / Ctrl+C / Ctrl+V work (the table keeps the cursor even if Logseq moves the focus).
+- Enter that saves a cell never adds a row; Enter on a selected last-row cell does.
+- A tall, a wide and a square image in one column look equally big (2wh/(w+h) = `img:`).
+- `power--w:: 5` is accepted by Logseq; header shows `power` / `W · number`.
+- Double-click a label whose block has no title: the parent block (the heading) is renamed.

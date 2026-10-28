@@ -1,4 +1,3 @@
-import { normKey } from './unit';
 import { resolveFormulas } from './formula';
 import { parseContent } from './text';
 import { toList } from './types';
@@ -14,6 +13,8 @@ export interface SourceBlock {
   preBlock: boolean;
   /** Text of the nearest ancestor block that has any; names a block whose own text is empty. */
   parentTitle?: string;
+  /** The block that holds `parentTitle`, so the row can be renamed from the table. */
+  parentUuid?: string;
   /** Database id; roughly document order, used when tree position is unknown. */
   seq: number;
 }
@@ -24,6 +25,8 @@ export interface Row {
   title: string;
   /** The block has a title line of its own (else `title` is its parent's, or empty). */
   titleOwn?: boolean;
+  /** The block whose title line is the label: the row's own, else the ancestor that supplied it. */
+  titleBlock?: string;
   values: Record<string, string>;
   /** Highest priority first; `sources[0]` is where clicks jump to. */
   sources: Source[];
@@ -52,6 +55,7 @@ export function blockToRow(b: SourceBlock): Row | null {
     // A block that holds only properties is named after its parent: `## Item` over `- status:: ok`.
     title: title || b.parentTitle || '',
     titleOwn: !!title,
+    titleBlock: title ? b.uuid : b.parentUuid ?? b.uuid,
     values: props,
     sources: [{ uuid: b.uuid, pageTitle: b.pageTitle, journalDay: b.journalDay }],
     conflicts: {},
@@ -151,7 +155,7 @@ export function validatePropKey(key: string, cols: string[]): string | null {
   if (!key) return 'Type a property name.';
   if (/\s/.test(key)) return 'No spaces in a property name.';
   if (/[:,]/.test(key)) return "A property name cannot hold ':' or ','.";
-  if (key !== normKey(key)) return `Use lower case: ${normKey(key)}.`;
+  if (key !== key.toLowerCase()) return `Use lower case: ${key.toLowerCase()}.`;
   if (cols.includes(key)) return `'${key}' is already a column.`;
   return null;
 }

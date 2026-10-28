@@ -113,6 +113,7 @@ export class Grid {
     const tbl = view.querySelector<HTMLElement>('.dq-tbl');
     const sv = tbl ? this.state(tbl) : undefined;
     if (!tbl || !sv) return;
+    tbl.tabIndex = 0;
     const { rows, keys } = this.layout(tbl);
     if (!rows.length || !keys.length) return;
     const ri = sv.uuid ? rows.findIndex((tr) => tr.dataset.uuid === sv.uuid) : -1;
@@ -149,10 +150,21 @@ export class Grid {
     if (!pos) return;
     // Pointing at another cell finishes the edit in progress, as in a spreadsheet.
     this.tools.commit();
+    tbl.tabIndex = 0;
     const sv = this.state(tbl);
     this.select(tbl, e.shiftKey && sv ? sv.a : pos, pos);
     this.drag = tbl;
     tbl.focus({ preventScroll: true });
+    // Logseq's own press handlers may move the focus away after ours; take it back once they are done.
+    setTimeout(() => {
+      if (tbl.isConnected && this.state(tbl)?.active && !this.tools.busy) tbl.focus({ preventScroll: true });
+    }, 0);
+  }
+
+  /** The table that has the cursor (clicked last, not left since), if it is still on the page. */
+  activeTable(): HTMLElement | null {
+    for (const tbl of this.doc.querySelectorAll<HTMLElement>('.dq-tbl')) if (this.state(tbl)?.active) return tbl;
+    return null;
   }
 
   onMouseMove(e: MouseEvent): void {
@@ -251,11 +263,8 @@ export class Grid {
     const { rows, keys } = this.layout(tbl);
     const at = (r: number, c: number) => this.select(tbl, { r, c }, { r, c });
     if (!move) return at(pos.r, pos.c);
-    if (move === 'down' && pos.r === rows.length - 1) {
-      at(pos.r, pos.c);
-      void this.addRowFor(tbl.dataset.macro!);
-      return;
-    }
+    // Enter that saves a cell on the last row stays there; only Enter on a selected cell adds a row.
+    if (move === 'down' && pos.r === rows.length - 1) return at(pos.r, pos.c);
     if (move === 'down') at(pos.r + 1, pos.c);
     else if (move === 'up') at(pos.r - 1, pos.c);
     else if (move === 'left') pos.c > 0 ? at(pos.r, pos.c - 1) : at(pos.r - 1, keys.length - 1);

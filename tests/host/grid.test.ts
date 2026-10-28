@@ -240,13 +240,16 @@ describe('rows', () => {
     expect(at(cur())).toBe('1:y');
   });
 
-  it('Enter that saves a cell on the last row adds a row too', async () => {
+  it('Enter that saves a cell on the last row stays there and adds no row', async () => {
     click(cell(2, 'x'));
     keyOn(tbl(), 'F2');
     const input = cell(2, 'x').querySelector<HTMLInputElement>('input')!;
     input.value = '4';
     keyOn(input, 'Enter');
-    await vi.waitFor(() => expect(deps.addRow).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(deps.saveCell).toHaveBeenCalledWith('c', 'x', '4');
+    expect(deps.addRow).not.toHaveBeenCalled();
+    expect(at(cur())).toBe('2:x');
   });
 
   it('the + row under the table adds one', () => {
@@ -370,7 +373,7 @@ describe('right-click menu', () => {
   it('offers Delete row and deletes the row', () => {
     const e = rightClick(cell(1, 'x'));
     expect(e).toBe(false);
-    const item = document.querySelector<HTMLElement>('.dq-menu .dq-menuitem')!;
+    const item = [...document.querySelectorAll<HTMLElement>('.dq-menu .dq-menuitem')].find((b) => b.textContent!.startsWith('Delete'))!;
     expect(item.textContent).toBe('Delete row');
     item.click();
     expect(deps.deleteRow).toHaveBeenCalledWith('m', 1);
@@ -434,5 +437,49 @@ describe('right-click menu and focus', () => {
     tbl().dispatchEvent(new FocusEvent('blur'));
     tbl().dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
     expect(document.querySelector('.dq-menu')).not.toBeNull();
+  });
+});
+
+describe('right-click menu: rename', () => {
+  it('Rename row opens the label editor', () => {
+    cell(1, 'x').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    document.querySelector<HTMLElement>('.dq-menurename')!.click();
+    expect(document.querySelector<HTMLInputElement>('tr[data-row="1"] td[data-label] input')!.value).toBe('B');
+  });
+});
+
+describe('table images', () => {
+  it('scales a picture so the harmonic mean of its sides is the table size', async () => {
+    const { scaleImg } = await import('../../src/host/interact');
+    const img = document.createElement('img');
+    Object.defineProperty(img, 'naturalWidth', { value: 300 });
+    Object.defineProperty(img, 'naturalHeight', { value: 100 });
+    scaleImg(img);
+    // 2wh/(w+h) = 150 for 300x100; the factors give T*kw by T*kh with the same harmonic mean T.
+    const kw = Number(img.style.getPropertyValue('--kw'));
+    const kh = Number(img.style.getPropertyValue('--kh'));
+    expect(kw).toBeCloseTo(2, 5);
+    expect(kh).toBeCloseTo(2 / 3, 5);
+    expect((2 * kw * kh) / (kw + kh)).toBeCloseTo(1, 5);
+    expect(kw / kh).toBeCloseTo(3, 5);
+  });
+});
+
+describe('focus slips away', () => {
+  it('arrows still move the cursor when the focus is on the page body', () => {
+    click(cell(0, 'x'));
+    (document.activeElement as HTMLElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    keyOn(document.body, 'ArrowDown');
+    expect(at(cur())).toBe('1:x');
+  });
+
+  it('but not after the user pressed somewhere else on the page', () => {
+    click(cell(0, 'x'));
+    document.body.insertAdjacentHTML('beforeend', '<p id="o">x</p>');
+    press(document.getElementById('o')!, 'mousedown');
+    (document.activeElement as HTMLElement).blur();
+    keyOn(document.body, 'ArrowDown');
+    expect(at(cur())).toBe('0:x');
   });
 });

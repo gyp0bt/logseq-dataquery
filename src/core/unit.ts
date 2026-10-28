@@ -1,14 +1,14 @@
-/** The unit a property key carries in brackets, `-` (dimensionless) when it has none. */
+/** The unit a property key carries after `--`, `-` (dimensionless) when it has none. */
 export const NO_UNIT = '-';
 
-/** `a[W]` → name `a`, unit `W`. Only a trailing, non-empty, single `[…]` counts as a unit. */
-export function splitUnit(key: string): { name: string; unit: string } {
-  const m = /^(.+?)\[([^[\]]+)\]$/.exec(key);
-  return m ? { name: m[1], unit: m[2].trim() || NO_UNIT } : { name: key, unit: NO_UNIT };
-}
+/** Logseq lower-cases and rewrites property keys, so a unit's capitals are put back for display. */
+const UNIT_CASE: Record<string, string> = Object.fromEntries(
+  ['W', 'kW', 'MW', 'V', 'mV', 'kV', 'A', 'mA', 'K', 'N', 'kN', 'Pa', 'kPa', 'MPa', 'GPa', 'Hz', 'kHz', 'MHz', 'J', 'kJ', 'MJ', 'Wh', 'kWh', 'C', 'F', 'H', 'S', 'T', 'L', 'mL', 'Ohm', 'kOhm', 'dB', 'rpm', 'deg', 'rad'].map((u) => [u.toLowerCase(), u]),
+);
 
-/** Property keys are lower case, but a unit is case-sensitive (`W` is not `w`, `MPa` is not `mpa`). */
-export function normKey(key: string): string {
-  const m = /^(.+?)(\[[^[\]]+\])$/.exec(key);
-  return m ? m[1].toLowerCase() + m[2] : key.toLowerCase();
+/** `power--w` → name `power`, unit `W`. The first `--` with text on both sides splits the key. */
+export function splitUnit(key: string): { name: string; unit: string } {
+  const m = /^(.+?)--(.+)$/.exec(key);
+  if (!m) return { name: key, unit: NO_UNIT };
+  return { name: m[1], unit: UNIT_CASE[m[2].toLowerCase()] ?? m[2] };
 }

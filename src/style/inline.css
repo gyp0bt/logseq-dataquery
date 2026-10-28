@@ -108,8 +108,8 @@
 .dq-colsl label { display: flex; align-items: center; gap: 4px; color: var(--dq-fg); overflow-wrap: anywhere; cursor: pointer; }
 .dq-imgs { flex-direction: row; align-items: center; gap: 3px; }
 .dq-imgs .dq-sb { min-width: 1.8em; }
-/* Table images: one height for the whole table (--dq-img, set from img:), aspect ratio kept. */
-.dq-img { display: inline-block; max-height: var(--dq-img, 64px); max-width: calc(var(--dq-img, 64px) * 4); width: auto; height: auto; vertical-align: middle; cursor: zoom-in; border-radius: 3px; }
+/* Table images: sized so the harmonic mean of width and height is --dq-img (set from img:); --kw and --kh come from the picture's own size (host script). */
+.dq-img { display: inline-block; width: calc(var(--dq-img, 64px) * var(--kw, 1)); height: calc(var(--dq-img, 64px) * var(--kh, 1)); object-fit: contain; vertical-align: middle; cursor: zoom-in; border-radius: 3px; }
 .dq-img + .dq-img { margin-left: 4px; }
 /* Failed to load: a dashed box showing the alt text; the title names the URL that was tried. */
 .dq-img-broken { min-width: 3em; min-height: 1.6em; border: 1px dashed var(--dq-plot-line, #c00); cursor: help; }
