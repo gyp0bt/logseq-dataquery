@@ -41,7 +41,8 @@ export const SHIELDED_EVENTS = [
   'mousedown', 'mouseup', 'click', 'dblclick', 'pointerdown', 'pointerup', 'selectstart', 'copy', 'cut', 'paste',
 ] as const;
 /** How long a click on a row label waits for a second click. */
-export const LABEL_CLICK_MS = 250;
+export const FULL_KEY_MS = 400;
+const LABEL_CLICK_MS = 250;
 /** What closes the right-click menu. */
 const AWAY = ['mousedown', 'keydown', 'wheel'];
 /** Table cells a double-click or click turns into a field (cell value, new column name). */
@@ -80,6 +81,7 @@ export class Interact {
   private grid: Grid;
   /** Macro blocks whose view fills the window. */
   private full = new Set<string>();
+  private lastFullKey = 0;
   /** The one hover label, fixed-positioned in Logseq's <body> so no overflow box can clip it. */
   private tipEl?: HTMLElement;
   private observers = new WeakMap<Element, ResizeObserver>();
@@ -93,7 +95,7 @@ export class Interact {
 
   constructor(private doc: Document, private deps: InteractDeps) {
     this.table = new TableTools(doc, { ...deps, addRow: (m) => this.grid.addRowFor(m) });
-    this.grid = new Grid(doc, deps, this.table, (tbl) => this.toggleFull(tbl.closest<HTMLElement>('.dq')));
+    this.grid = new Grid(doc, deps, this.table, (tbl) => this.keyFull(tbl.closest<HTMLElement>('.dq')));
   }
 
   install(): () => void {
@@ -274,9 +276,9 @@ export class Interact {
     // `f` toggles full screen from anywhere in a view (or from the page body while one is full).
     const k = e as KeyboardEvent;
     if (e.type === 'keydown' && k.key === 'f' && !k.ctrlKey && !k.metaKey && !k.altKey && !k.shiftKey && !t?.closest?.(FIELD_SELECTOR)) {
-      const view = t?.closest?.<HTMLElement>('.dq') ?? (t === this.doc.body ? this.doc.querySelector<HTMLElement>('.dq-full') : null);
+      const view = t?.closest?.<HTMLElement>('.dq') ?? this.doc.querySelector<HTMLElement>('.dq-full');
       if (view) {
-        this.toggleFull(view);
+        this.keyFull(view);
         this.swallowKeyUp = 'f';
         return stopAll(e);
       }
@@ -488,12 +490,25 @@ export class Interact {
     this.draw(box);
   }
 
+  /**
+   * `f` toggles, but a held or mashed key must not flip it back and forth (and let the stray presses
+   * reach Logseq): presses within FULL_KEY_MS of the last toggle are swallowed without toggling.
+   */
+  private keyFull(view: HTMLElement | null): void {
+    const now = Date.now();
+    if (now - this.lastFullKey < FULL_KEY_MS) return;
+    this.lastFullKey = now;
+    this.toggleFull(view);
+  }
+
   /** The view fills the window (⛶ or `f` toggles). A chart's folded table is opened, since it is what fills it. */
   private toggleFull(view: HTMLElement | null): void {
     const uuid = view?.dataset.macro;
     if (!view || !uuid) return;
-    if (this.full.has(uuid)) {
-      this.leaveFull(view);
+    // The screen decides, not the remembered set: a repaint can drop the class and leave the set behind.
+    if (view.classList.contains('dq-full')) {
+      this.full.delete(uuid);
+      view.classList.remove('dq-full');
       return;
     }
     this.full.add(uuid);

@@ -49,7 +49,10 @@ beforeEach(() => {
   off = ui.install();
   paint();
 });
-afterEach(() => off());
+afterEach(() => {
+  off();
+  vi.useRealTimers();
+});
 
 const tbl = () => document.querySelector<HTMLElement>('.dq-tbl')!;
 const cell = (row: number, col: string) => document.querySelector<HTMLElement>(`tr[data-row="${row}"] td[data-col="${col}"]`)!;
@@ -345,6 +348,7 @@ describe('full screen', () => {
   });
 
   it('f toggles it while the table has the focus, and Esc does not leave it', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     click(cell(0, 'x'));
     keyOn(tbl(), 'f');
     expect(full()).toBe(true);
@@ -352,7 +356,20 @@ describe('full screen', () => {
     expect(cell(0, 'x').querySelector('input')).toBeNull();
     keyOn(tbl(), 'Escape');
     expect(full()).toBe(true);
+    vi.advanceTimersByTime(1000);
     keyOn(tbl(), 'f');
+    expect(full()).toBe(false);
+  });
+
+  it('mashing f toggles once, and f outside a field is swallowed while full', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    click(cell(0, 'x'));
+    keyOn(tbl(), 'f');
+    keyOn(tbl(), 'f');
+    keyOn(tbl(), 'f');
+    expect(full()).toBe(true);
+    vi.advanceTimersByTime(1000);
+    keyOn(document.body, 'f');
     expect(full()).toBe(false);
   });
 
