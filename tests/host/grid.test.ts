@@ -152,6 +152,21 @@ describe('editing in the grid', () => {
     expect(document.activeElement).toBe(tbl());
   });
 
+  it('Esc on the table drops its focus; arrows in an editor move on at the text edge', () => {
+    click(cell(0, 'x'));
+    keyOn(tbl(), 'Escape');
+    expect(document.activeElement).not.toBe(tbl());
+    click(cell(0, 'x'));
+    keyOn(tbl(), 'F2');
+    const input = cell(0, 'x').querySelector<HTMLInputElement>('input')!;
+    input.setSelectionRange(input.value.length, input.value.length);
+    keyOn(input, 'ArrowRight');
+    expect(at(cur())).toBe('0:y');
+    keyOn(tbl(), 'F2');
+    keyOn(cell(0, 'y').querySelector('input')!, 'ArrowDown');
+    expect(at(cur())).toBe('1:y');
+  });
+
   it('Tab saves and moves right; Esc cancels and keeps the cell', () => {
     click(cell(0, 'x'));
     keyOn(tbl(), 'F2');

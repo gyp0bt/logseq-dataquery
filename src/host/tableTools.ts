@@ -240,6 +240,17 @@ export class TableTools {
     }
     if (cellIn && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
       this.pickCell(ed, e);
+      // Not a formula pick and the caret is already at that end of the text: the cursor moves on to the next cell.
+      const { selectionStart: a, selectionEnd: b, value } = input;
+      if (!e.defaultPrevented && a === b && (e.key === 'ArrowLeft' ? a === 0 : a === value.length)) {
+        e.preventDefault();
+        this.finish(ed, e.key === 'ArrowLeft' ? 'left' : 'right');
+      }
+      return true;
+    }
+    if (cellIn && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      this.finish(ed, e.key === 'ArrowUp' ? 'up' : 'down');
       return true;
     }
     if (e.key === 'Tab' && cellIn) {

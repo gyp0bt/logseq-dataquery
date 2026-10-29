@@ -234,6 +234,7 @@ export class Grid {
         e.preventDefault();
         if (a.r !== h.r || a.c !== h.c) return this.select(tbl, h, h);
         if (sv) sv.active = false;
+        tbl.blur();
         return;
       }
       case 'Delete':
