@@ -30,6 +30,8 @@ export interface InlineHooks {
   extraCols?(uuid: string): string[];
   /** Whether the view of `uuid` fills the window. */
   full?(uuid: string): boolean;
+  /** The macro's earlier view left the page (the block went back to raw text): nothing of it should come back. */
+  gone?(uuid: string): void;
 }
 
 /** Tracks rendered macro slots so DB changes can re-render them. */
@@ -48,6 +50,11 @@ export class InlineViews {
 
   /** Logseq (re)created the slot: it is empty, so it is always painted. */
   async show(slot: string, uuid: string, kind: Kind, dsl: string): Promise<void> {
+    for (const [old, info] of [...this.slots]) {
+      if (old === slot || info.uuid !== uuid || this.exists(old)) continue;
+      this.slots.delete(old);
+      this.hooks.gone?.(uuid);
+    }
     this.slots.set(slot, { uuid, kind, dsl, gen: 0 });
     await this.render(slot, false);
   }

@@ -149,6 +149,18 @@ describe('InlineViews', () => {
     await views.refreshAll();
     expect(provide).not.toHaveBeenCalled();
   });
+  it('a view that left the page is reported gone when the macro is drawn again', async () => {
+    const gone = vi.fn();
+    const alive = new Set(['s1']);
+    const views = new InlineViews(new Engine(graph(), () => 'dataquery/types'), vi.fn(), (s) => alive.has(s), { gone });
+    await views.show('s1', 'm', 'table', '#work/nsb sort:gre');
+    await views.show('s1b', 'm', 'table', '#work/nsb sort:gre');
+    expect(gone).not.toHaveBeenCalled();
+    alive.delete('s1');
+    alive.add('s1b');
+    await views.show('s2', 'm', 'table', '#work/nsb sort:gre');
+    expect(gone).toHaveBeenCalledWith('m');
+  });
   it('a slow older render does not overwrite a newer one', async () => {
     const real = new Engine(graph(), () => 'dataquery/types');
     const done = await real.evaluate('#work/nsb sort:gre', 'table', 'm');

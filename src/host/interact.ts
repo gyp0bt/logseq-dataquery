@@ -212,6 +212,11 @@ export class Interact {
   }
 
   /** Whether the view of `uuid` fills the window. */
+  /** The view is gone from the page (raw-text editing): full screen does not wait for it to come back. */
+  leaveFullOf(uuid: string): void {
+    this.full.delete(uuid);
+  }
+
   isFull(uuid: string): boolean {
     return this.full.has(uuid);
   }

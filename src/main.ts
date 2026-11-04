@@ -90,6 +90,7 @@ async function main(): Promise<void> {
     assetScheme: () => assetScheme,
     extraCols: (uuid) => extra.get(uuid) ?? [],
     full: (uuid) => interact?.isFull(uuid) ?? false,
+    gone: (uuid) => interact?.leaveFullOf(uuid),
   });
 
   try {
