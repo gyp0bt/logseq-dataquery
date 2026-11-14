@@ -10,7 +10,7 @@ export const BLOCKS_QUERY = `[:find (pull ?b [:db/id :block/uuid :block/content 
  :where [?b :block/properties ?p] [(not= ?p {})]]`;
 
 /** Logseq may return namespaced, kebab or camel keys depending on the call path. */
-function pick(o: any, ...names: string[]): any {
+export function pick(o: any, ...names: string[]): any {
   for (const n of names) if (o && o[n] !== undefined && o[n] !== null) return o[n];
   return undefined;
 }
