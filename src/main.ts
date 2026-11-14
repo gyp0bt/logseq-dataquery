@@ -11,6 +11,11 @@ import { InlineViews } from './host/inline';
 import { installInlineSlash } from './host/inlineSlash';
 import { FIELD_SELECTOR, Interact } from './host/interact';
 import inlineCss from './style/inline.css?raw';
+import { CardViews } from './host/cards';
+import { CardCopier } from './host/cardCopy';
+import { fetchCards } from './host/cardsFetch';
+import { imageToPng } from './host/clipboardImage';
+import { resolveImageSrc } from './core/images';
 import tokensCss from './style/tokens.css?raw';
 
 const DEFAULT_TYPES_PAGE = 'dataquery/types';
@@ -65,6 +70,7 @@ async function main(): Promise<void> {
   const drafts = new Map<string, string>();
 
   let interact: Interact | undefined;
+  let cardViews: CardViews | undefined;
   const provide = (slot: string, html: string) => {
     logseq.provideUI({ key: `dataquery-${slot}`, slot, reset: true, template: html });
     interact?.attach(slot);
@@ -169,10 +175,38 @@ async function main(): Promise<void> {
       },
     });
     const off = interact.install();
+    const win = parent as unknown as Window & typeof globalThis;
+    const clip = () => {
+      const c = win.navigator.clipboard;
+      if (!c) throw new Error('The clipboard is not available in this window.');
+      return c;
+    };
+    const copier = new CardCopier(api, {
+      writeText: (text) => clip().writeText(text),
+      writeImage: async (src) => {
+        const url = resolveImageSrc(src, graphPath, assetScheme);
+        if (url === null) throw new Error(`The picture ${src} cannot be loaded.`);
+        const png = await imageToPng(win, url);
+        await clip().write([new win.ClipboardItem({ 'image/png': png })]);
+      },
+    });
+    cardViews = new CardViews(parent.document, {
+      fetch: (refs, uuid) => fetchCards(api, refs, uuid),
+      copier,
+      provide: (slot, html) => logseq.provideUI({ key: `dataquery-${slot}`, slot, reset: true, template: html }),
+      exists: (slot) => slotEl(slot) !== null,
+      save: setDslFromView,
+      selectBlock: (uuid) => void logseq.Editor.selectBlock(uuid).catch((e) => report(new Error('Could not select the query block.', { cause: e }))),
+      openUrl: (url) => void logseq.App.openExternalLink(url).catch((e) => report(new Error(`Could not open ${url}.`, { cause: e }))),
+      report,
+      graphPath: () => graphPath,
+      assetScheme: () => assetScheme,
+    });
     const offSlash = installInlineSlash(parent.document, { convert: (uuid) => expandInlineBlock(api, uuid), leaveEditing, report });
     logseq.beforeunload(async () => {
       off();
       offSlash();
+      cardViews?.dispose();
     });
   } catch (e) {
     report(new Error('Data query cannot reach the Logseq window: the query field, chart tools and CSV copy will not respond.', { cause: e }));
@@ -187,7 +221,7 @@ async function main(): Promise<void> {
       return;
     }
     const kind: MacroKind | undefined = name ? MACRO_KINDS[name] : undefined;
-    if (!kind || kind === 'cards') return;
+    if (!kind) return;
     // Read the query from the block text: Logseq's argument splitting loses spacing inside quotes.
     let dsl: string;
     try {
@@ -195,6 +229,10 @@ async function main(): Promise<void> {
     } catch (e) {
       console.warn('[dataquery] could not read the macro text; using the macro arguments', e);
       dsl = joinMacroArgs([type.trim().slice(name.length), ...rest].filter((a) => a.trim()));
+    }
+    if (kind === 'cards') {
+      if (!cardViews) return report(new Error('DQcards cannot reach the Logseq window, so it cannot draw.'));
+      return cardViews.show(slot, payload.uuid, dsl);
     }
     await views.show(slot, payload.uuid, kind, dsl);
   });
@@ -205,6 +243,7 @@ async function main(): Promise<void> {
     timer = setTimeout(() => {
       engine.invalidate();
       void views.refreshAll();
+      void cardViews?.refreshAll().catch(report);
     }, 300);
   });
 

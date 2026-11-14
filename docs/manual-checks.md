@@ -145,3 +145,14 @@ These rest on Logseq DOM details the unit tests only fake:
 - Full screen survives: changing sort / Cols / img (the macro is rewritten), scrolling the block out of view and back, a DB change. Only Esc, Alt+Enter and ⛶ end it; a click on blank space in full screen does nothing.
 - Cols ▾: tick several columns in a row; the page does not jump; closing the menu (or clicking outside) writes `hide:` once.
 - Scatter `y:a,b`: two coloured series, legend `Y = a` / `Y = b`, y axis titled `a, b`; Y chips × / + Y work.
+
+## DQcards
+
+- `/DQcards #tips` becomes `{{renderer :DQcards, #tips}}`; `/DQ cards` from the slash menu inserts the macro.
+- A `#tips` block with a code child: one card, with the child's code in the preview.
+- ⧉ on a code block: the code (without the fence) pastes into another app; the count goes up by 1.
+- ⧉ on an image (`../assets/…` and a pasted `data:` image): the picture pastes into another app as an image. If it pastes as `![](…)`, the console says why.
+- `copies:: N` is invisible under the block: once with `:block-hidden-properties #{:copies}` in config.edn, once without it (CSS fallback; check which element hides).
+- After a copy the list order, the selection and both scroll positions stay; the toast says which copy it was.
+- Edit a code block, then press its ⧉ in the old preview: nothing is copied, the toast says 中身が変わったので選び直してください, the preview redraws.
+- Keys: ↑↓, Tab / Shift+Tab, Enter, Esc (the macro block is selected); typing in the query and filter fields is not taken by Logseq shortcuts; a click in the view does not open the macro block for editing.

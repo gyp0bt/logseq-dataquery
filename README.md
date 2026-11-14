@@ -127,6 +127,16 @@ Click a cell — or select the macro block (Esc while editing it) and press **�
 
 **Labels without `by:`.** A block with no text of its own is named after its parent block: `## CheckItem1` with a child `id:: abc` shows as `CheckItem1`.
 
+## Copy cards (DQcards)
+
+`{{renderer :DQcards, #tips}}` (or type `/DQcards #tips` in a block) lists the blocks tagged `#tips` as cards, most copied first. Each card is a tagged block with all its children.
+
+- The left list shows each card's title, what it holds (code / images / links) and its copy count. The right pane previews the selected card with a ⧉ button on every code block, image and link, and **Copy all** for the whole card as outline text.
+- Each copy adds 1 to the block's `copies::` property. To keep it out of sight, add `:block-hidden-properties #{:copies}` to `logseq/config.edn` (the plugin also hides it with CSS as a fallback).
+- The copy always reads the block again; if it changed since it was drawn, nothing is copied and the card is redrawn. Images go on the clipboard as PNG, or as `![](path)` when that is not possible.
+- After a copy the list keeps its order; it is sorted again when you change the query or the filter. `sort:title` / `sort:-copies` work; table and chart settings are ignored with a note.
+- Keys: ↑↓ pick a card, Tab / Shift+Tab step through its snippets, Enter copies (the whole card when no snippet is focused), Esc returns to Logseq. Double-click a card to copy it all.
+
 ## Types
 
 Inferred per key across the whole graph:
@@ -176,6 +186,7 @@ Works with Logseq 0.10.x (Markdown/file graphs).
 - 属性名が `power--w` のように `--` を含めば、その後ろを単位として認識します（無ければ `-`、無次元。Logseq は `[]` や空白を拒否するため）。
 - `by:` を使わないとき、ブロックのラベルは親ブロックの文字列になります（`## CheckItem1` の子 `id:: abc` → `CheckItem1`）。
 - 注意: xlsx ファイルそのものはクリップボードに載せられないため、HTML 表とタブ区切りテキストでコピーします。貼り付けた画像は `assets/` に保存できず、セル内の `data:` URL として保持されます。
+- **DQcards**: `/DQcards #tips` で、タグの付いたブロック（子ブロックも含む）をコピー回数の多い順にカードで並べます。右のプレビューでコード・画像・リンクを 1 個ずつ ⧉ でコピーでき、コピーするたびに `copies::` が 1 増えます。見えなくするには `config.edn` に `:block-hidden-properties #{:copies}` を足してください。キーは ↑↓ でカード、Tab で中身、Enter でコピー、Esc で Logseq へ。
 
 ## 中文
 
@@ -193,6 +204,7 @@ Works with Logseq 0.10.x (Markdown/file graphs).
 - 属性名如 `power--w`，`--` 之后视为单位 `W`（没有则为 `-`，无量纲；因为 Logseq 不接受 `[]` 和空格）。
 - 不使用 `by:` 时，块的标签为其父块的文本（`## CheckItem1` 下的 `id:: abc` 显示为 `CheckItem1`）。
 - 说明：浏览器剪贴板无法携带 xlsx 文件，因此以 HTML 表格和制表符文本复制；粘贴的图片无法写入 `assets/`，以 `data:` URL 保存在单元格中。
+- **DQcards**：`/DQcards #tips` 将带标签的块（含子块）按复制次数排列成卡片。右侧预览中每个代码块、图片和链接都可单独 ⧉ 复制，每次复制 `copies::` 加 1。在 `config.edn` 中加入 `:block-hidden-properties #{:copies}` 可隐藏它。按键：↑↓ 选卡片，Tab 选内容，Enter 复制，Esc 返回 Logseq。
 
 ## License
 
