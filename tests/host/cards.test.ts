@@ -35,6 +35,7 @@ beforeEach(async () => {
     selectBlock: vi.fn(),
     report: vi.fn(),
     openUrl: vi.fn(),
+    leaveEditing: vi.fn(),
   };
   v = new CardViews(document, deps);
   await v.show(slot, 'm', '#tips');
@@ -57,7 +58,9 @@ describe('CardViews', () => {
     await v.refreshAll();
     const f = document.querySelector<HTMLInputElement>('input.dqc-filter')!;
     f.value = 'a';
+    f.focus();
     f.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 350));
     expect(rows()).toEqual(['A', 'B', 'C']);
     expect(document.activeElement).toBe(document.querySelector('input.dqc-filter'));
     const q = document.querySelector<HTMLInputElement>('input.dqc-q')!;
@@ -135,5 +138,92 @@ describe('CardViews', () => {
   it('shows the settings it ignores', async () => {
     await v.show(slot, 'm', '#tips x:a');
     expect(document.querySelector('.dqc-note')?.textContent).toBe('DQcards では使いません: x');
+  });
+});
+
+describe('CardViews after review', () => {
+  it('applies the query conditions to the cards (I1)', async () => {
+    cards[1].root.content += '\nlang:: python';
+    await v.show(slot, 'm', '#tips lang==python');
+    expect(rows()).toEqual(['B']);
+  });
+  it('does not repaint the filter while composing, and waits for a pause in typing (I2)', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = document.querySelector<HTMLInputElement>('input.dqc-filter')!;
+      f.focus();
+      f.value = 'n';
+      f.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }));
+      vi.advanceTimersByTime(1000);
+      expect(document.querySelector('input.dqc-filter')).toBe(f);
+      f.value = 'needle';
+      f.dispatchEvent(new Event('compositionend', { bubbles: true }));
+      f.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      expect(document.querySelector('input.dqc-filter')).toBe(f);
+      vi.advanceTimersByTime(400);
+      expect(rows()).toEqual(['C']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('holds a graph refresh while a field is being typed in, and paints on leaving it (I2, M3)', async () => {
+    const q = document.querySelector<HTMLInputElement>('input.dqc-q')!;
+    q.focus();
+    q.value = '#tips half-typed';
+    cards[1].copies = 99;
+    await v.refreshAll();
+    expect(document.querySelector('input.dqc-q')).toBe(q);
+    q.blur();
+    q.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    await flush();
+    expect(document.querySelector('li.dqc-row[data-card="B"] .dqc-n')?.textContent).toBe('99');
+  });
+  it('scrolls the newly selected row into view after the new HTML arrives (I3)', async () => {
+    const seen: Element[] = [];
+    const orig = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) { if (this.isConnected) seen.push(this); } as any;
+    deps.provide = (s: string, html: string) => setTimeout(() => { document.getElementById(s)!.innerHTML = html; }, 5);
+    try {
+      root().focus();
+      key(root(), 'ArrowDown');
+      await new Promise((r) => setTimeout(r, 60));
+      expect(seen.filter((e) => e.isConnected).map((e) => e.getAttribute('data-card'))).toContain('C');
+    } finally {
+      Element.prototype.scrollIntoView = orig;
+    }
+  });
+  it('keeps keys and presses inside the view away from Logseq, and ends block editing on a press (I4)', () => {
+    const outside = vi.fn();
+    document.addEventListener('keydown', outside);
+    document.addEventListener('keyup', outside);
+    document.addEventListener('pointerdown', outside);
+    try {
+      const f = document.querySelector<HTMLInputElement>('input.dqc-filter')!;
+      f.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+      f.dispatchEvent(new KeyboardEvent('keyup', { key: 'Backspace', bubbles: true }));
+      root().dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', bubbles: true }));
+      root().dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      expect(outside).not.toHaveBeenCalled();
+      root().dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      expect(deps.leaveEditing).toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('keydown', outside);
+      document.removeEventListener('keyup', outside);
+      document.removeEventListener('pointerdown', outside);
+    }
+  });
+  it('keeps the keyboard in the view after a copy button was pressed and the view repainted (I6)', async () => {
+    document.querySelector<HTMLElement>('li.dqc-row[data-card="A"]')!.click();
+    const btn = document.querySelector<HTMLElement>('[data-snip="1"] button.dqc-copy')!;
+    btn.focus();
+    btn.click();
+    cards[0].copies = 4;
+    await v.refreshAll();
+    expect(document.activeElement?.getAttribute('data-snip')).toBe('1');
+    const whole = document.querySelector<HTMLElement>('button.dqc-whole')!;
+    whole.focus();
+    cards[0].copies = 5;
+    await v.refreshAll();
+    expect(document.activeElement).toBe(root());
   });
 });

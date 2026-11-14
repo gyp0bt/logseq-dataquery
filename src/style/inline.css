@@ -196,9 +196,8 @@
 .dqc-toast.show { opacity: 0.92; }
 /*
  * Fallback for `:block-hidden-properties #{:copies}` in config.edn: hide the `copies::` row Logseq
- * draws under a block. Targets the property row whose key link names `copies` (checked in the real
+ * draws under a block. Targets the property row whose key link names `copies` (to be checked in the real
  * app; see docs/manual-checks.md).
  */
-.block-properties > div:has(> .page-property-key[data-ref="copies"]),
-.block-properties > div:has(> a.page-property-key[data-ref="copies"]) { display: none; }
-.block-properties:not(:has(> div:not([style*="display: none"]):not(:has(> .page-property-key[data-ref="copies"])))) { display: none; }
+.block-properties > div:has(.page-property-key [data-ref="copies"]),
+.block-properties > div:has(.page-property-key[data-ref="copies"]) { display: none; }

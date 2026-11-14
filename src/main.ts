@@ -197,6 +197,7 @@ async function main(): Promise<void> {
       exists: (slot) => slotEl(slot) !== null,
       save: setDslFromView,
       selectBlock: (uuid) => void logseq.Editor.selectBlock(uuid).catch((e) => report(new Error('Could not select the query block.', { cause: e }))),
+      leaveEditing,
       openUrl: (url) => void logseq.App.openExternalLink(url).catch((e) => report(new Error(`Could not open ${url}.`, { cause: e }))),
       report,
       graphPath: () => graphPath,

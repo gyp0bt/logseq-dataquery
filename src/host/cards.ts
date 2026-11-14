@@ -1,5 +1,5 @@
 import { cardTitle, type Card } from '../core/cards';
-import { cardOrder, cardsHtml } from '../core/cardsView';
+import { cardOrder, cardsHtml, matchConds } from '../core/cardsView';
 import { cardsNotes, parseQuery } from '../core/dsl';
 import type { AssetScheme } from '../core/images';
 import { StaleSnippet, type CardCopier, type CopyTarget } from './cardCopy';
@@ -14,6 +14,8 @@ export interface CardViewsDeps {
   /** Hand the keys back to Logseq with the macro block selected. */
   selectBlock(uuid: string): void;
   openUrl?(url: string): void;
+  /** Leave Logseq's block editor before a press in the view takes the focus (Logseq cannot close it later). */
+  leaveEditing?(): void;
   report(e: unknown): void;
   graphPath?(): string | undefined;
   assetScheme?(): AssetScheme;
@@ -35,7 +37,15 @@ interface CardState {
 type Focus = { field: 'q' | 'filter'; caret: number } | { snip: string } | 'root' | null;
 
 const TOAST_MS = 1500;
-const MOUSE = ['mousedown', 'mouseup', 'click', 'dblclick'] as const;
+/** Wait this long after the last keystroke in the filter before drawing the list again. */
+export const FILTER_MS = 300;
+/**
+ * Events Logseq's own handlers act on (shortcuts, block selection, outside-click editing). Inside the
+ * view they stop at the window, before Logseq sees them, like the table's shield in interact.ts.
+ */
+const SHIELDED = ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'compositionstart', 'compositionend',
+  'pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu', 'selectstart', 'copy', 'cut', 'paste'] as const;
+const FIELD = 'input.dqc-q, input.dqc-filter';
 
 /** The DQcards views: one state per macro block, painted into each slot that shows it. */
 export class CardViews {
@@ -43,22 +53,35 @@ export class CardViews {
   private states = new Map<string, CardState>();
   private last = new Map<string, string>();
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
+  private filterTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Slots whose graph refresh waits until the field being typed in is left. */
+  private held = new Set<string>();
   private off: Array<() => void> = [];
 
   constructor(private doc: Document, private deps: CardViewsDeps) {
-    const on = <K extends keyof DocumentEventMap>(type: K, fn: (e: DocumentEventMap[K]) => void) => {
-      doc.addEventListener(type, fn as EventListener, true);
-      this.off.push(() => doc.removeEventListener(type, fn as EventListener, true));
+    const win = doc.defaultView ?? window;
+    const shield = (e: Event) => {
+      if (!this.viewOf(e.target)) return;
+      if (e.type === 'keydown') this.onKey(e as KeyboardEvent);
+      else if (e.type === 'input') this.onInput(e as InputEvent);
+      else if (e.type === 'compositionend') this.onInput(e);
+      else if (e.type === 'mousedown' || e.type === 'click' || e.type === 'dblclick') this.onMouse(e as MouseEvent);
+      e.stopPropagation();
     };
-    on('keydown', (e) => this.onKey(e));
-    on('input', (e) => this.onInput(e));
-    for (const t of MOUSE) on(t, (e) => this.onMouse(e as MouseEvent));
+    for (const t of SHIELDED) win.addEventListener(t, shield, true);
+    const onOut = (e: FocusEvent) => this.onFocusOut(e);
+    doc.addEventListener('focusout', onOut, true);
+    this.off.push(() => {
+      for (const t of SHIELDED) win.removeEventListener(t, shield, true);
+      doc.removeEventListener('focusout', onOut, true);
+    });
   }
 
   dispose(): void {
     for (const f of this.off) f();
     this.off = [];
     clearTimeout(this.toastTimer);
+    clearTimeout(this.filterTimer);
   }
 
   /** Logseq (re)created the slot: read the cards and order them afresh. */
@@ -76,7 +99,13 @@ export class CardViews {
     for (const [slot] of [...this.slots]) if (!this.deps.exists(slot)) this.slots.delete(slot);
     for (const uuid of new Set(this.slots.values())) {
       await this.load(uuid, false);
-      this.paintUuid(uuid);
+      for (const [slot, u] of this.slots) {
+        if (u !== uuid) continue;
+        // Painting replaces the fields: a half-typed query or filter would be lost.
+        const f = this.focusOf(slot);
+        if (f && typeof f === 'object' && 'field' in f) this.held.add(slot);
+        else this.paint(slot, f);
+      }
     }
   }
 
@@ -89,7 +118,7 @@ export class CardViews {
       return;
     }
     try {
-      st.cards = await this.deps.fetch(parsed.query.refs, uuid);
+      st.cards = matchConds(await this.deps.fetch(parsed.query.refs, uuid), parsed.query.conds);
       st.error = undefined;
     } catch (e) {
       console.warn('[dataquery] could not read the cards', e);
@@ -130,15 +159,18 @@ export class CardViews {
     if (!el || !a || !el.contains(a)) return null;
     if (a.matches('input.dqc-q, input.dqc-filter'))
       return { field: a.classList.contains('dqc-q') ? 'q' : 'filter', caret: (a as HTMLInputElement).selectionStart ?? 0 };
-    if (a.dataset.snip !== undefined) return { snip: a.dataset.snip };
-    return a.matches('.dqc') ? 'root' : null;
+    // A pressed ⧉ keeps the keyboard on its snippet, 全体をコピー on the view.
+    const snip = a.closest<HTMLElement>('[data-snip]');
+    if (snip?.dataset.snip !== undefined) return { snip: snip.dataset.snip };
+    return a.closest('.dqc') ? 'root' : null;
   }
 
-  private paintUuid(uuid: string, focus?: Focus): void {
-    for (const [slot, u] of this.slots) if (u === uuid) this.paint(slot, focus);
+  private paintUuid(uuid: string, focus?: Focus, after?: (root: HTMLElement) => void): void {
+    for (const [slot, u] of this.slots) if (u === uuid) this.paint(slot, focus, after);
   }
 
-  private paint(slot: string, focus: Focus = this.focusOf(slot)): void {
+  private paint(slot: string, focus: Focus = this.focusOf(slot), after?: (root: HTMLElement) => void): void {
+    this.held.delete(slot);
     const uuid = this.slots.get(slot)!;
     const st = this.states.get(uuid)!;
     const old = this.slotEl(slot)?.querySelector<HTMLElement>('.dqc') ?? null;
@@ -152,10 +184,10 @@ export class CardViews {
       uuid, dsl: st.dsl, cards: st.cards, order: st.order, selected: st.selected, filter: st.filter,
       notes: st.notes, error: st.error, graphPath: this.deps.graphPath?.(), assetScheme: this.deps.assetScheme?.(),
     });
-    if (html === this.last.get(slot) && old) return this.restore(slot, st, focus);
+    if (html === this.last.get(slot) && old) return this.restore(slot, st, focus, after);
     this.last.set(slot, html);
     this.deps.provide(slot, html);
-    this.afterPaint(slot, old, () => this.restore(slot, st, focus));
+    this.afterPaint(slot, old, () => this.restore(slot, st, focus, after));
   }
 
   /** Logseq puts the new HTML in asynchronously; wait (a few frames at most) until the slot holds it. */
@@ -165,7 +197,7 @@ export class CardViews {
     setTimeout(() => this.afterPaint(slot, old, fn, tries - 1), 16);
   }
 
-  private restore(slot: string, st: CardState, focus: Focus): void {
+  private restore(slot: string, st: CardState, focus: Focus, after?: (root: HTMLElement) => void): void {
     const root = this.slotEl(slot)?.querySelector<HTMLElement>('.dqc');
     if (!root) return;
     const list = root.querySelector<HTMLElement>('.dqc-list');
@@ -183,6 +215,7 @@ export class CardViews {
       toast.textContent = st.toast.text;
       toast.classList.add('show');
     }
+    after?.(root);
   }
 
   private toast(uuid: string, text: string): void {
@@ -216,9 +249,9 @@ export class CardViews {
     if (st.selected === card) return;
     st.selected = card;
     st.scroll.pv = 0;
-    this.paintUuid(uuid, focus);
-    for (const [slot, u] of this.slots)
-      if (u === uuid) [...(this.slotEl(slot)?.querySelectorAll<HTMLElement>('li.dqc-row') ?? [])].find((r) => r.dataset.card === card)?.scrollIntoView?.({ block: 'nearest' });
+    // After the new list is in and its scroll restored, or the restore would undo this.
+    this.paintUuid(uuid, focus, (root) =>
+      [...root.querySelectorAll<HTMLElement>('li.dqc-row')].find((r) => r.dataset.card === card)?.scrollIntoView?.({ block: 'nearest' }));
   }
 
   private copy(uuid: string, card: string, target: CopyTarget): void {
@@ -243,9 +276,8 @@ export class CardViews {
   private onMouse(e: MouseEvent): void {
     const v = this.viewOf(e.target);
     if (!v) return;
-    // Inside the view a press must not open the macro block for editing.
-    e.stopPropagation();
     const t = e.target as HTMLElement;
+    if (e.type === 'mousedown') return this.deps.leaveEditing?.();
     if (e.type === 'click') {
       const link = t.closest<HTMLAnchorElement>('a.dq-url');
       if (link) {
@@ -269,15 +301,32 @@ export class CardViews {
     }
   }
 
+  /** The filter draws again once typing pauses, and never while an IME is composing (that would cut it off). */
   private onInput(e: Event): void {
     const t = e.target as HTMLInputElement;
     if (!t.matches?.('input.dqc-filter')) return;
     const v = this.viewOf(t);
     if (!v) return;
-    v.st.filter = t.value;
-    this.reorder(v.uuid);
-    v.st.scroll.list = 0;
-    this.paintUuid(v.uuid, { field: 'filter', caret: t.selectionStart ?? t.value.length });
+    clearTimeout(this.filterTimer);
+    if ((e as InputEvent).isComposing) return;
+    const uuid = v.uuid;
+    this.filterTimer = setTimeout(() => {
+      const st = this.states.get(uuid);
+      if (!st) return;
+      st.filter = t.value;
+      this.reorder(uuid);
+      st.scroll.list = 0;
+      this.paintUuid(uuid, t.ownerDocument.activeElement === t ? { field: 'filter', caret: t.selectionStart ?? t.value.length } : undefined);
+    }, FILTER_MS);
+  }
+
+  /** A held refresh is painted once the field is left (after the focus has moved). */
+  private onFocusOut(e: FocusEvent): void {
+    const t = e.target as Element | null;
+    if (!t?.matches?.(FIELD) || !this.held.size) return;
+    setTimeout(() => {
+      for (const slot of [...this.held]) if (this.focusOf(slot) === null || this.focusOf(slot) === 'root') this.paint(slot);
+    }, 0);
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -329,11 +378,14 @@ export class CardViews {
         snips[n].focus();
         return;
       }
-      case 'Enter':
+      case 'Enter': {
         done();
         if (!card) return;
-        if (t.dataset.snip !== undefined) this.copy(v.uuid, card, this.snipTarget(t));
+        const snip = t.closest<HTMLElement>('[data-snip]');
+        if (snip) this.copy(v.uuid, card, this.snipTarget(snip));
         else this.copy(v.uuid, card, 'whole');
+        return;
+      }
         return;
       case 'Escape':
         done();

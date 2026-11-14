@@ -1,6 +1,11 @@
 import { blockParts, cardSnippets, cardTitle, KIND_NAMES, snippetId, walk, wholeText, type Card, type SnippetKind } from './cards';
 import { esc } from './html';
 import { resolveImageSrc, type AssetScheme } from './images';
+import type { Cond } from './dsl';
+import { matchCond } from './query';
+import type { Row } from './rows';
+import { parseContent } from './text';
+import { inferType, type ValueType } from './types';
 
 /**
  * Root uuids in display order: `copies` descending by default; `sort:copies` / `sort:-copies` and
@@ -94,4 +99,17 @@ export function cardsHtml(p: CardsPaint): string {
     ? `<div class="dqc-body"><ul class="dqc-list">${list}</ul>${previewHtml(sel, p)}</div>`
     : '<div class="dqc-empty">該当するブロックがありません</div>';
   return `${open}${head}${meta}</div>${notes}${main}${toast}</div>`;
+}
+
+/**
+ * The cards whose root block passes every condition of the query (`key==v`, `key>3`, `key`), read
+ * from the root's own properties and compared the way tables compare them.
+ */
+export function matchConds(cards: Card[], conds: Cond[]): Card[] {
+  if (!conds.length) return cards;
+  const values = new Map(cards.map((c) => [c, parseContent(c.root.content).props]));
+  const types: Record<string, ValueType> = {};
+  for (const k of new Set(conds.map((c) => c.key)))
+    types[k] = inferType([...values.values()].map((v) => v[k]).filter((x): x is string => x !== undefined));
+  return cards.filter((c) => conds.every((cond) => matchCond({ values: values.get(c)! } as Row, cond, types)));
 }

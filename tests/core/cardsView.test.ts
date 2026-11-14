@@ -72,3 +72,16 @@ describe('cardsHtml', () => {
     expect((d.querySelector('input.dqc-q') as HTMLInputElement).value).toBe('#tips');
   });
 });
+
+describe('matchConds (review I1)', () => {
+  it('keeps the cards whose root properties pass the conditions, numbers compared as numbers', async () => {
+    const { matchConds } = await import('../../src/core/cardsView');
+    const { parseQuery } = await import('../../src/core/dsl');
+    const mk = (u: string, props: string): Card => ({ root: node(u, `t #tips\n${props}`), copies: 0, seq: 0, page: 'p' });
+    const cs = [mk('P', 'lang:: python\nlevel:: 10'), mk('S', 'lang:: sh\nlevel:: 9'), mk('N', 'other:: x')];
+    const conds = (q: string) => (parseQuery(q) as any).query.conds;
+    expect(matchConds(cs, conds('#tips lang==python')).map((c) => c.root.uuid)).toEqual(['P']);
+    expect(matchConds(cs, conds('#tips level>9.5')).map((c) => c.root.uuid)).toEqual(['P']);
+    expect(matchConds(cs, conds('#tips lang')).map((c) => c.root.uuid)).toEqual(['P', 'S']);
+  });
+});
