@@ -1,5 +1,5 @@
 import { addY, parseQuery, removeY, setImg, setSetting, stepImg, toggleErr, toggleHidden, type Kind, type SettingName } from '../core/dsl';
-import { buildMacro, expandInline, findMacro, replaceMacro } from '../core/macroText';
+import { buildMacro, expandInline, findMacro, replaceMacro, type MacroKind } from '../core/macroText';
 import type { LogseqLike } from './api';
 
 /** Message plus the whole cause chain, for places that can only show text. */
@@ -21,10 +21,10 @@ async function getBlock(api: LogseqLike, uuid: string): Promise<any> {
   }
 }
 
-export async function readMacro(api: LogseqLike, macroUuid: string): Promise<{ macro: string; kind: Kind; dsl: string }> {
+export async function readMacro(api: LogseqLike, macroUuid: string): Promise<{ macro: string; kind: MacroKind; dsl: string }> {
   const block = await getBlock(api, macroUuid);
   const found = block ? findMacro(String(block.content)) : null;
-  if (!found) throw new Error('The query block no longer contains a DQtable, DQscatter or DQbar macro.');
+  if (!found) throw new Error('The query block no longer contains a DQtable, DQscatter, DQbar or DQcards macro.');
   return found;
 }
 
@@ -41,7 +41,7 @@ export async function expandInlineBlock(api: LogseqLike, uuid: string): Promise<
 }
 
 /** Rewrite the macro; refuses if the block no longer holds `oldMacro` (edited elsewhere). */
-export async function saveDsl(api: LogseqLike, macroUuid: string, oldMacro: string, kind: Kind, dsl: string): Promise<string> {
+export async function saveDsl(api: LogseqLike, macroUuid: string, oldMacro: string, kind: MacroKind, dsl: string): Promise<string> {
   const block = await getBlock(api, macroUuid);
   if (!block) throw new Error('The query block no longer exists.');
   const next = replaceMacro(String(block.content), oldMacro, kind, dsl);

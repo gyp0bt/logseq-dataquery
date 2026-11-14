@@ -166,3 +166,11 @@ describe('hide: and img:', () => {
     expect(stepImg('#t img:25', -1)).toBe('#t img:24');
   });
 });
+
+describe('cardsNotes', () => {
+  it('names the settings DQcards ignores', async () => {
+    const { cardsNotes } = await import('../../src/core/dsl');
+    expect(cardsNotes('#tips sort:-copies x:a hide:b')).toEqual(['DQcards では使いません: x, hide']);
+    expect(cardsNotes('#tips sort:copies')).toEqual([]);
+  });
+});

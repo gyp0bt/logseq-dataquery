@@ -4,7 +4,7 @@ const UUID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 /** Logseq's autocomplete (slash commands, `#` page search): Enter belongs to it while it is open. */
 const POPUP = '#ui__ac, #ui__ac-inner';
 /** Some line of the text may be an inline `/DQ…` (the exact test is `expandInline`). */
-const HAS_INLINE = /^\s*\/dq ?(?:table|scatter|bar)\b/im;
+const HAS_INLINE = /^\s*\/dq ?(?:table|scatter|bar|cards)\b/im;
 /** Wait for Logseq to save the editor's text before rewriting the block. */
 export const CONVERT_DELAY = 80;
 

@@ -1,7 +1,7 @@
 import '@logseq/libs';
 import { joinMacroArgs, type Kind } from './core/dsl';
 import type { AssetScheme } from './core/images';
-import { buildMacro, LEGACY_TYPE, MACRO_KINDS } from './core/macroText';
+import { buildMacro, LEGACY_TYPE, MACRO_KINDS, type MacroKind } from './core/macroText';
 import { renderLegacy } from './core/view';
 import { newRowFor } from './core/newRow';
 import { applyControl, errorText, deleteBlocks, expandInlineBlock, insertRow, jumpTo, saveTitle, readMacro, saveCell, saveDsl, setImgInMacro, type SetEvent } from './host/actions';
@@ -186,8 +186,8 @@ async function main(): Promise<void> {
       logseq.provideUI({ key: `dataquery-${slot}`, slot, reset: true, template: renderLegacy() });
       return;
     }
-    const kind: Kind | undefined = name ? MACRO_KINDS[name] : undefined;
-    if (!kind) return;
+    const kind: MacroKind | undefined = name ? MACRO_KINDS[name] : undefined;
+    if (!kind || kind === 'cards') return;
     // Read the query from the block text: Logseq's argument splitting loses spacing inside quotes.
     let dsl: string;
     try {
@@ -228,7 +228,7 @@ async function main(): Promise<void> {
     dqSet: (e: SetEvent) => applyControl(api, e).catch(report),
   });
 
-  const kinds: Array<[string, Kind]> = [['DQ table', 'table'], ['DQ scatter', 'scatter'], ['DQ bar', 'bar']];
+  const kinds: Array<[string, MacroKind]> = [['DQ table', 'table'], ['DQ scatter', 'scatter'], ['DQ bar', 'bar'], ['DQ cards', 'cards']];
   for (const [label, kind] of kinds) {
     logseq.Editor.registerSlashCommand(label, async () => {
       await logseq.Editor.insertAtEditingCursor(buildMacro(kind, ''));

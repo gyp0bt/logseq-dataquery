@@ -128,7 +128,7 @@ describe('actions', () => {
     await expect(toggleErrInMacro(api, 'm', 'bar')).rejects.toThrow('Fix the query first');
   });
   it('readMacro says so when the macro is gone', async () => {
-    await expect(readMacro(graph(), 'a')).rejects.toThrow('no longer contains a DQtable, DQscatter or DQbar macro');
+    await expect(readMacro(graph(), 'a')).rejects.toThrow('no longer contains a DQtable, DQscatter, DQbar or DQcards macro');
   });
   it('jumpTo scrolls to the block in its page', async () => {
     const api = graph();

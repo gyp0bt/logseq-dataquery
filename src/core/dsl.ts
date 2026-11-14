@@ -308,3 +308,19 @@ export function setImg(text: string, px: number): string {
 export function joinMacroArgs(args: string[]): string {
   return args.map((a) => a.trim()).join(', ');
 }
+
+/** Settings that only tables and charts use; DQcards takes `sort:` alone. */
+export const CARDS_UNUSED: readonly SettingName[] = ['x', 'y', 'color', 'by', 'err', 'labels', 'hide', 'img'];
+
+/** A note naming the settings in `text` that DQcards ignores, or nothing (also for a query that does not parse). */
+export function cardsNotes(text: string): string[] {
+  const p = parseQuery(text);
+  if (!p.ok) return [];
+  const q = p.query;
+  const set: Record<string, boolean> = {
+    x: q.x !== undefined, y: q.ys.length > 0, color: q.color !== undefined, by: q.by !== undefined,
+    err: q.err !== 'off', labels: q.labels, hide: q.hide.length > 0, img: q.img !== undefined,
+  };
+  const used = CARDS_UNUSED.filter((n) => set[n]);
+  return used.length ? [`DQcards では使いません: ${used.join(', ')}`] : [];
+}

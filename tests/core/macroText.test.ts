@@ -3,7 +3,7 @@ import { buildMacro, expandInline, findMacro, isInlineLine, MACRO_KINDS, replace
 
 describe('macro text', () => {
   const content = 'before {{renderer :DQscatter, #[[a b]] combine==none,mean x:a}} after\nk:: v';
-  it('maps macro names to kinds', () => expect(MACRO_KINDS).toEqual({ ':DQtable': 'table', ':DQscatter': 'scatter', ':DQbar': 'bar' }));
+  it('maps macro names to kinds', () => expect(MACRO_KINDS).toEqual({ ':DQtable': 'table', ':DQscatter': 'scatter', ':DQbar': 'bar', ':DQcards': 'cards' }));
   it('finds the macro, its kind and its query', () => {
     expect(findMacro(content)).toEqual({ macro: '{{renderer :DQscatter, #[[a b]] combine==none,mean x:a}}', kind: 'scatter', dsl: '#[[a b]] combine==none,mean x:a' });
     expect(findMacro('{{renderer :DQtable}}')).toEqual({ macro: '{{renderer :DQtable}}', kind: 'table', dsl: '' });
@@ -42,5 +42,15 @@ describe('expandInline', () => {
     expect(isInlineLine(t, 4)).toBe(true);
     expect(isInlineLine(t, 1)).toBe(false);
     expect(isInlineLine(t, t.length)).toBe(false);
+  });
+});
+
+describe(':DQcards', () => {
+  it('reads, builds and expands the cards macro', async () => {
+    const { findMacro, buildMacro, expandInline } = await import('../../src/core/macroText');
+    expect(findMacro('x {{renderer :DQcards, #tips}}')).toEqual({ macro: '{{renderer :DQcards, #tips}}', kind: 'cards', dsl: '#tips' });
+    expect(buildMacro('cards', '#tips')).toBe('{{renderer :DQcards, #tips}}');
+    expect(expandInline('/DQcards #tips')).toBe('{{renderer :DQcards, #tips}}');
+    expect(expandInline('/dq cards #tips')).toBe('{{renderer :DQcards, #tips}}');
   });
 });
