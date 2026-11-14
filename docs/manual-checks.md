@@ -131,3 +131,17 @@
 - A tall, a wide and a square image in one column look equally big (2wh/(w+h) = `img:`).
 - `power--w:: 5` is accepted by Logseq; header shows `power` / `W · number`.
 - Double-click a label whose block has no title: the parent block (the heading) is renamed.
+
+## Unreleased (links, inline /DQ, keys)
+
+These rest on Logseq DOM details the unit tests only fake:
+
+- A cell `#tips [[Page B]] https://e.org` shows three links; a click on a tag / page opens the page (full screen ends first), a URL opens in the browser; a double-click still edits the cell.
+- Type `/DQscatter #tips` on its own line, press Enter → the block becomes `{{renderer :DQscatter, #tips}}` and no new block is made. Same with Esc and with a click elsewhere. (Relies on the editor textarea id `edit-block-…-<uuid>`.)
+- While the `#` page popup is open, Enter picks the page (relies on the popup id `#ui__ac`).
+- Typing into a cell and pressing Esc saves the value; a second Esc selects the macro block (blue); → then puts the cursor back in the table (relies on `.ls-block.selected`) and Logseq's highlight goes away (`clear_selected_blocks`, if Logseq has it).
+- With the macro block selected and the cursor moved into the table, Delete / Backspace clear cells and never delete the block.
+- Alt+Enter toggles full screen; `f` types into a cell.
+- Full screen survives: changing sort / Cols / img (the macro is rewritten), scrolling the block out of view and back, a DB change. Only Esc, Alt+Enter and ⛶ end it; a click on blank space in full screen does nothing.
+- Cols ▾: tick several columns in a row; the page does not jump; closing the menu (or clicking outside) writes `hide:` once.
+- Scatter `y:a,b`: two coloured series, legend `Y = a` / `Y = b`, y axis titled `a, b`; Y chips × / + Y work.

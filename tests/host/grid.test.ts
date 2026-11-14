@@ -27,6 +27,12 @@ const mk = () => ({
   addColumn: vi.fn(),
   addRow: vi.fn<(m: string) => Promise<string | undefined>>(async () => 'new'),
   jump: vi.fn<(u: string) => Promise<void>>(async () => {}),
+  selectBlock: vi.fn<(u: string) => void>(),
+  dslOf: vi.fn<(u: string) => string | undefined>(() => '#t'),
+  preview: vi.fn<(u: string, d: string | undefined) => void>(),
+  clearSelection: vi.fn(),
+  openPage: vi.fn<(n: string) => Promise<void>>(async () => {}),
+  openUrl: vi.fn<(u: string) => Promise<void>>(async () => {}),
   saveTitle: vi.fn<(b: string, t: string) => Promise<void>>(async () => {}),
   deleteRow: vi.fn<(m: string, i: number) => Promise<void>>(async () => {}),
   setImg: vi.fn(async () => {}),
@@ -35,10 +41,10 @@ let deps: ReturnType<typeof mk>;
 let off: () => void;
 let ui: Interact;
 
-function paint(dsl = '') {
+function paint(dsl = '', from: SourceBlock[] = blocks) {
   const parsed = parseQuery(dsl);
   if (!parsed.ok) throw new Error('bad test query');
-  const result = runQuery(parsed.query, 'table', { blocks, types, macroUuid: 'm' });
+  const result = runQuery(parsed.query, 'table', { blocks: from, types, macroUuid: 'm' });
   document.body.innerHTML = `<div id="slot">${renderInline({ kind: 'table', macroUuid: 'm', dsl, parsed, result })}</div>`;
   deps.view.mockReturnValue({ kind: 'table', query: parsed.query, result });
   ui.attach('slot');
@@ -152,10 +158,11 @@ describe('editing in the grid', () => {
     expect(document.activeElement).toBe(tbl());
   });
 
-  it('Esc on the table drops its focus; arrows in an editor move on at the text edge', () => {
+  it('Esc on the table drops its focus and selects the macro block; arrows in an editor move on at the text edge', () => {
     click(cell(0, 'x'));
     keyOn(tbl(), 'Escape');
     expect(document.activeElement).not.toBe(tbl());
+    expect(deps.selectBlock).toHaveBeenCalledWith('m');
     click(cell(0, 'x'));
     keyOn(tbl(), 'F2');
     const input = cell(0, 'x').querySelector<HTMLInputElement>('input')!;
@@ -167,7 +174,38 @@ describe('editing in the grid', () => {
     expect(at(cur())).toBe('1:y');
   });
 
-  it('Tab saves and moves right; Esc cancels and keeps the cell', () => {
+  it('Esc in an editor saves and keeps the cell, as in Logseq', () => {
+    click(cell(0, 'x'));
+    keyOn(tbl(), '7');
+    const input = cell(0, 'x').querySelector<HTMLInputElement>('input')!;
+    input.value = '7';
+    keyOn(input, 'Escape');
+    expect(deps.saveCell).toHaveBeenCalledWith('a', 'x', '7');
+    expect(document.activeElement).toBe(tbl());
+    expect(at(cur())).toBe('0:x');
+    keyOn(tbl(), 'Escape');
+    expect(deps.selectBlock).toHaveBeenCalledWith('m');
+  });
+
+  it('→ on the selected macro block goes into its table', () => {
+    document.body.innerHTML = `<div class="ls-block selected">${document.body.innerHTML}</div>`;
+    ui.attach('slot');
+    keyOn(document.body, 'ArrowRight');
+    expect(deps.clearSelection).toHaveBeenCalled();
+    expect(document.activeElement).toBe(tbl());
+    expect(at(cur())).toBe('0:x');
+    keyOn(tbl(), 'ArrowDown');
+    expect(at(cur())).toBe('1:x');
+  });
+
+  it('→ with no or another selected block is Logseq\'s', () => {
+    expect(keyOn(document.body, 'ArrowRight').defaultPrevented).toBe(false);
+    document.body.insertAdjacentHTML('beforeend', '<div class="ls-block selected"></div>');
+    keyOn(document.body, 'ArrowRight');
+    expect(deps.clearSelection).not.toHaveBeenCalled();
+  });
+
+  it('Tab saves and moves right; Esc with nothing changed writes nothing', () => {
     click(cell(0, 'x'));
     keyOn(tbl(), 'F2');
     const input = cell(0, 'x').querySelector<HTMLInputElement>('input')!;
@@ -362,41 +400,66 @@ describe('full screen', () => {
     expect(full()).toBe(false);
   });
 
-  it('f toggles it while the table has the focus, and Esc does not leave it', () => {
+  const alt = { altKey: true };
+  it('Alt+Enter toggles it while the table has the focus', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     click(cell(0, 'x'));
-    keyOn(tbl(), 'f');
+    keyOn(tbl(), 'Enter', alt);
     expect(full()).toBe(true);
     expect(deps.saveCell).not.toHaveBeenCalled();
-    expect(cell(0, 'x').querySelector('input')).toBeNull();
-    keyOn(tbl(), 'Escape');
-    expect(full()).toBe(true);
+    expect(at(cur())).toBe('0:x');
     vi.advanceTimersByTime(1000);
-    keyOn(tbl(), 'f');
+    keyOn(tbl(), 'Enter', alt);
     expect(full()).toBe(false);
   });
 
-  it('mashing f toggles once, and f outside a field is swallowed while full', () => {
+  it('Esc leaves it at once and keeps the table; the next Esc goes back to Logseq', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     click(cell(0, 'x'));
-    keyOn(tbl(), 'f');
-    keyOn(tbl(), 'f');
-    keyOn(tbl(), 'f');
+    keyOn(tbl(), 'Enter', alt);
+    keyOn(tbl(), 'Escape');
+    expect(full()).toBe(false);
+    expect(document.activeElement).toBe(tbl());
+    expect(deps.selectBlock).not.toHaveBeenCalled();
+    keyOn(tbl(), 'Escape');
+    expect(deps.selectBlock).toHaveBeenCalledWith('m');
+  });
+
+  it('Esc from the page body leaves it; a cell editor\'s Esc only saves', () => {
+    document.querySelector<HTMLElement>('.dq-side [data-act="full"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    click(cell(0, 'x'));
+    keyOn(tbl(), 'F2');
+    keyOn(cell(0, 'x').querySelector('input')!, 'Escape');
     expect(full()).toBe(true);
-    vi.advanceTimersByTime(1000);
-    keyOn(document.body, 'f');
+    keyOn(document.body, 'Escape');
     expect(full()).toBe(false);
   });
 
-  it('f from the page body leaves a full-screen view, and a capital F still types', () => {
+  it('a repaint, even into a new slot, keeps it', () => {
     document.querySelector<HTMLElement>('.dq-side [data-act="full"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    keyOn(document.body, 'f');
-    expect(full()).toBe(false);
+    paint();
+    expect(ui.isFull('m')).toBe(true);
+  });
+
+  it('mashing Alt+Enter toggles once; from the page body it leaves full screen', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     click(cell(0, 'x'));
-    keyOn(tbl(), 'F', { shiftKey: true });
+    keyOn(tbl(), 'Enter', alt);
+    keyOn(tbl(), 'Enter', alt);
+    keyOn(tbl(), 'Enter', alt);
+    expect(full()).toBe(true);
+    vi.advanceTimersByTime(1000);
+    keyOn(document.body, 'Enter', alt);
+    expect(full()).toBe(false);
+  });
+
+  it('every letter starts typing, f included', () => {
+    click(cell(0, 'x'));
+    keyOn(tbl(), 'f');
     expect(cell(0, 'x').querySelector('input')).not.toBeNull();
     expect(full()).toBe(false);
   });
+
 });
 
 describe('right-click menu', () => {
@@ -513,5 +576,76 @@ describe('focus slips away', () => {
     (document.activeElement as HTMLElement).blur();
     keyOn(document.body, 'ArrowDown');
     expect(at(cur())).toBe('0:x');
+  });
+});
+
+describe('links in cells', () => {
+  const clickEv = (el: Element) => el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  beforeEach(() => paint('', [block('a', 'A\nnote:: #tips and [[Page B]]\nsrc:: https://e.org/x')]));
+  afterEach(() => vi.useRealTimers());
+
+  it('a tag or page reference opens its page after a beat, leaving full screen', () => {
+    vi.useFakeTimers();
+    document.querySelector<HTMLElement>('.dq-side [data-act="full"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    const [tag, ref] = cell(0, 'note').querySelectorAll('a.dq-page');
+    clickEv(tag);
+    vi.advanceTimersByTime(300);
+    expect(deps.openPage).toHaveBeenCalledWith('tips');
+    expect(ui.isFull('m')).toBe(false);
+    clickEv(ref);
+    vi.advanceTimersByTime(300);
+    expect(deps.openPage).toHaveBeenLastCalledWith('Page B');
+  });
+
+  it('a URL opens outside', () => {
+    vi.useFakeTimers();
+    const a = cell(0, 'src').querySelector('a.dq-url')!;
+    expect(clickEv(a)).toBe(false); // default (navigation) prevented
+    vi.advanceTimersByTime(300);
+    expect(deps.openUrl).toHaveBeenCalledWith('https://e.org/x');
+  });
+
+  it('a double-click on a link edits the cell instead', () => {
+    vi.useFakeTimers();
+    const a = cell(0, 'note').querySelector('a.dq-page')!;
+    clickEv(a);
+    clickEv(a);
+    a.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    vi.advanceTimersByTime(300);
+    expect(deps.openPage).not.toHaveBeenCalled();
+    expect(cell(0, 'note').querySelector('input')?.value).toBe('#tips and [[Page B]]');
+  });
+});
+
+describe('Cols menu', () => {
+  const tick = (col: string) => {
+    const box = document.querySelector<HTMLInputElement>(`.dq-cols input[data-col="${col}"]`)!;
+    box.checked = !box.checked;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  it('ticks only redraw; the macro is written once, when a press lands outside the menu', async () => {
+    const heard = vi.fn();
+    document.body.addEventListener('change', heard);
+    tick('x');
+    tick('y');
+    expect(heard).not.toHaveBeenCalled(); // Logseq's data-on-change never writes it
+    expect(deps.preview).toHaveBeenLastCalledWith('m', '#t hide:x,y');
+    expect(deps.submit).not.toHaveBeenCalled();
+    press(document.querySelector('.dq-cols input')!, 'mousedown');
+    expect(deps.submit).not.toHaveBeenCalled();
+    press(cell(0, 'z'), 'mousedown');
+    expect(deps.submit).toHaveBeenCalledTimes(1);
+    expect(deps.submit).toHaveBeenCalledWith('m', '#t hide:x,y');
+    await Promise.resolve();
+    expect(deps.preview).toHaveBeenLastCalledWith('m', undefined);
+  });
+
+  it('closing the menu writes the ticks', () => {
+    const sum = document.querySelector<HTMLElement>('.dq-cols > summary')!;
+    sum.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    tick('x');
+    sum.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(deps.submit).toHaveBeenCalledWith('m', '#t hide:x');
   });
 });

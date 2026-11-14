@@ -76,11 +76,13 @@ describe('renderInline', () => {
     expect(head('sort:-gre', 'note')!.slice(1)).toEqual(['note', undefined]);
   });
 
-  it('scatter side: X, Y and colour selects, ± and ▤ toggles, reset, enlarge, CSV', () => {
+  it('scatter side: X and colour selects, Y chips, ± and ▤ toggles, reset, enlarge, CSV', () => {
     const html = real('scatter', '');
     const sel = (name: string) => new RegExp(`<select class="dq-sel" data-on-change="dqSet" data-macro="m" data-name="${name}"[^>]*>(.*?)</select>`).exec(html)![1];
     expect(sel('x')).toBe('<option value="gre" selected>gre</option><option value="thick">thick</option>');
-    expect(sel('y')).toBe('<option value="gre">gre</option><option value="thick" selected>thick</option>');
+    // Y takes several columns, as on a bar chart: a chip per column and `+ Y` for the rest.
+    expect(html).toContain('<span class="dq-chip">thick</span>');
+    expect(html).toMatch(/data-name="y" data-op="add"[^>]*>.*<option value="gre">gre<\/option>/);
     expect(sel('color')).toContain('<option value="" selected>none</option>');
     expect(sel('color')).toContain('<option value="seed">seed</option>');
     expect(real('scatter', 'color:seed')).toContain('<option value="seed" selected>seed</option>');
@@ -274,5 +276,14 @@ describe('table header units', () => {
     expect(html).toContain('power<');
     expect(html).toContain('>W · number<');
     expect(html).toContain('>- · number<');
+  });
+});
+
+describe('scatter with several Y columns', () => {
+  it('draws one series per Y column on a shared axis', () => {
+    const html = real('scatter', 'x:gre y:thick,seed');
+    expect(html).toContain('>thick, seed</text>');
+    expect(html).toContain('Y = thick');
+    expect(html).toContain('Y = seed');
   });
 });

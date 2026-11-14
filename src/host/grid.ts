@@ -4,7 +4,10 @@ import type { ViewData } from '../core/view';
 import { clipboardImage, imageToDataUrl } from './clipboardImage';
 import type { Move, TableDeps, TableTools } from './tableTools';
 
-export type GridDeps = Pick<TableDeps, 'view' | 'report' | 'notify' | 'saveCell' | 'addRow'>;
+export type GridDeps = Pick<TableDeps, 'view' | 'report' | 'notify' | 'saveCell' | 'addRow'> & {
+  /** Esc left the table: select its macro block in Logseq, so the keys go on in the outline. */
+  selectBlock?(uuid: string): void;
+};
 
 interface Pos { r: number; c: number }
 /** One table's cursor (`h`, the head) and range anchor (`a`), by position and by what they sit on. */
@@ -29,8 +32,10 @@ export class Grid {
     private doc: Document,
     private deps: GridDeps,
     private tools: TableTools,
-    /** `f`: toggle the full screen of the view the table is in. */
+    /** Alt+Enter: toggle the full screen of the view the table is in. */
     private toggleFull: (tbl: HTMLElement) => void,
+    /** Esc: leave the full screen of the view the table is in. */
+    private leaveFull: (tbl: HTMLElement) => void = toggleFull,
   ) {
     tools.onEditEnd = (cell, move) => this.afterEdit(cell, move);
   }
@@ -63,6 +68,13 @@ export class Grid {
   }
 
   // ---- selection ----
+
+  /** Take the keyboard from Logseq: the table gets the focus, on its last cursor or the top-left cell. */
+  enter(tbl: HTMLElement): void {
+    const sv = this.state(tbl);
+    tbl.focus({ preventScroll: true });
+    this.select(tbl, sv?.a ?? { r: 0, c: 0 }, sv?.h ?? { r: 0, c: 0 });
+  }
 
   private select(tbl: HTMLElement, a: Pos, h: Pos): void {
     const macro = tbl.dataset.macro;
@@ -201,6 +213,10 @@ export class Grid {
       const p = { r: clamp(r, lastR), c: clamp(c, lastC) };
       this.select(tbl, extend ? a : p, p);
     };
+    if (e.key === 'Enter' && e.altKey && !mod) {
+      e.preventDefault();
+      return this.toggleFull(tbl);
+    }
     switch (e.key) {
       case 'ArrowUp': return go(mod ? 0 : h.r - 1, h.c);
       case 'ArrowDown': return go(mod ? lastR : h.r + 1, h.c);
@@ -226,15 +242,14 @@ export class Grid {
         if (td) this.tools.edit(td, false);
         return;
       }
-      case 'f':
-        if (mod || e.altKey) break;
-        e.preventDefault();
-        return this.toggleFull(tbl);
       case 'Escape': {
         e.preventDefault();
         if (a.r !== h.r || a.c !== h.c) return this.select(tbl, h, h);
+        // Full screen: Esc leaves it and the table keeps the keys; the next Esc hands them to Logseq.
+        if (tbl.closest('.dq-full')) return this.leaveFull(tbl);
         if (sv) sv.active = false;
         tbl.blur();
+        if (tbl.dataset.macro) this.deps.selectBlock?.(tbl.dataset.macro);
         return;
       }
       case 'Delete':

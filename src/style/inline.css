@@ -93,6 +93,9 @@
 .dq .dq-type { display: block; font-size: 0.75em; font-weight: 400; color: var(--dq-muted); }
 .dq .dq-num { text-align: right; }
 .dq .dq-link { color: var(--dq-accent); cursor: pointer; }
+/* Links in cells (tags, page references, URLs): opened by the host script on click. */
+.dq-tbl a.dq-page, .dq-tbl a.dq-url { color: var(--dq-accent); cursor: pointer; text-decoration: none; }
+.dq-tbl a.dq-page:hover, .dq-tbl a.dq-url:hover { text-decoration: underline; }
 .dq .dq-pass { background: var(--dq-pass-bg); color: var(--dq-pass); }
 .dq .dq-fail { background: var(--dq-fail-bg); color: var(--dq-fail); }
 .dq tr.dq-hl td { background: var(--dq-code); box-shadow: inset 0 1px 0 var(--dq-accent), inset 0 -1px 0 var(--dq-accent); }

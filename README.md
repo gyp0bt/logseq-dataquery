@@ -29,10 +29,12 @@ Three macros, inserted with `/DQ table`, `/DQ scatter` and `/DQ bar`:
 | Macro | Shows | Buttons on the right |
 |---|---|---|
 | `{{renderer :DQtable, …}}` | table | CSV |
-| `{{renderer :DQscatter, …}}` | scatter plot + folded table | X▾ Y▾ Color▾ ± ▤ ⟲ ⤢ CSV |
+| `{{renderer :DQscatter, …}}` | scatter plot + folded table | X▾ Y chips + Y▾ Color▾ ± ▤ ⟲ ⤢ CSV |
 | `{{renderer :DQbar, …}}` | bar chart (means, min–max whiskers) + folded table | X▾ Y chips + Y▾ ⤢ CSV |
 
 Keep the comma after the macro name, as with any Logseq renderer.
+
+Or type the query inline: a line that is just `/DQscatter #tips` (also `/DQtable …`, `/DQbar …`, `/DQ scatter …`) becomes `{{renderer :DQscatter, #tips}}` when you leave the block — Enter on that line, Esc, or a click elsewhere. (Logseq's slash popup drops what follows the command name, so this is done on leaving instead.) While Logseq's autocomplete popup is open, Enter is still Logseq's.
 
 ## Why
 
@@ -86,9 +88,11 @@ A property such as `loss:: 1.27/1.31/1.29` (or `1.27, 1.31`) holds several numbe
 - **X▾ Y▾ Color▾** pick a column (a bar chart's X takes any column; the `by:` key is offered too, also for Color, whose blank entry reads `by: run` while `by:` drives the colours). A bar chart shows its y columns as chips: **×** removes one (removing the last drops `y:`, back to the default) and **+ Y▾** appends a numeric column not shown yet. A bar chart's **Color▾** splits the bars by a column. **±** (pooled error bars) and **▤** (pooled band) are on/off toggles; the lit one is active, pressing it again goes back to one point per row. These and table-header clicks rewrite the macro, so the view is saved with the page; any other text you wrote in the query stays as it was.
 - **⟲** resets zoom and shows hidden traces; **⤢** enlarges the chart. Both are temporary and do not touch the macro.
 - **CSV** copies the rows and columns on screen to the clipboard.
-- **Cols▾** lists every column (the `by:` key too) with a checkbox; unticking one writes it into `hide:`.
+- **Cols▾** lists every column (the `by:` key too) with a checkbox; unticking one hides it at once, and the ticks are written into `hide:` together when the menu closes (or you click outside it), so several can be ticked in a row without the page jumping.
+- **Several Y on a scatter:** `y:loss,score` (or the Y chips and `+ Y`) draws each column as its own series on one y axis; `color:` then splits each series further.
+- **Links in cells:** `#tag`, `#[[two words]]` and `[[page]]` open the page; `https://…` and `[label](https://…)` open in the browser. A click opens after a short beat, so a double-click still edits the cell.
 - **Images in cells:** `![alt](path)` (one or several) and cells holding just an image path or URL (png, jpg, jpeg, gif, webp, svg) show as thumbnails. `../assets/x.png` loads from the graph folder; only http, https and file URLs load. Click one to see it large; click or Esc closes. **Img − +** (shown when the table has images) and **Ctrl + wheel** over an image resize every image in the table and save the size as `img:`.
-- **Edit cells:** double-click a cell, type, Enter saves the property to its block (empty removes it), Esc cancels. In a `by:` row only a key that one block holds can be edited. The **+** header cell adds a column: type a new lower-case property name; it stays until you write a value into it.
+- **Edit cells:** double-click a cell, type, Enter saves the property to its block (empty removes it), Esc saves too (as in Logseq). In a `by:` row only a key that one block holds can be edited. The **+** header cell adds a column: type a new lower-case property name; it stays until you write a value into it.
 - Charts: hover for values (the title is the group's value), drag to zoom, double-click blank plot area to reset, click a point to open the table and highlight the rows of its group.
 - Under a scatter or bar chart the table is folded behind a one-line **▸ Table (N rows)** toggle; it stays as you left it while the view redraws. CSV works while folded.
 - Axis handles (scatter): drag the left or right quarter of the x axis to move only that end, the middle to pan; the same for the y axis (bottom end, top end, middle). **Double-click an end** to type its value (Enter applies, Esc or clicking away cancels); double-click the middle to reset that axis only.
@@ -102,12 +106,12 @@ The old `{{renderer :dataquery, …}}` macro is no longer drawn; replace it with
 
 ## Table as a spreadsheet
 
-Click a cell and the table takes the keyboard (Logseq does not see those keys until you press Esc).
+Click a cell — or select the macro block (Esc while editing it) and press **→** — and the table takes the keyboard. Logseq does not see those keys until you press Esc, which selects the macro block again so ↑ ↓ go on in the outline.
 
 | Key / action | Does |
 |---|---|
 | Arrows, Tab, Enter | Move between cells. Shift extends the selection, Ctrl jumps to the edge |
-| Just type | Starts editing the cell; Enter saves and moves down, Tab saves and moves right, Esc cancels. F2 or double-click edits with the old value |
+| Just type | Starts editing the cell; Enter saves and moves down, Tab saves and moves right, Esc saves and stays (Ctrl+Z in the field undoes typing first). F2 or double-click edits with the old value. Every key starts typing, `f` included |
 | Delete / Backspace | Clears the selected cells (removes the properties) |
 | Drag, Shift+arrows, Ctrl+A | Select a range |
 | Ctrl+C / X / V | Copy / cut / paste. Copies tab-separated text **and** an HTML table, so Excel and Google Sheets paste it as cells (a browser clipboard cannot carry an .xlsx file). Pasting a block of cells writes each into its block |
@@ -115,7 +119,7 @@ Click a cell and the table takes the keyboard (Logseq does not see those keys un
 | Enter on the last row (not the Enter that saves a cell), or the **+** row | Adds a row: a new block below the last row's block, carrying a header line (`row 3`), `tags::` and any `key==value` of the query |
 | Click a row's label / double-click it | Go to its block (a full-screen view is left first) / rename it (writes the first line of the block, or of the parent block that supplies the label; not with `by:`). Also in the right-click menu |
 | Right-click a row | Menu with **Delete row** (removes the row's block; Logseq's undo brings it back) |
-| `f` or ⛶ | Toggle full screen (Esc does not leave it). So typing starts a cell with any key except a lower-case `f`: use F2, double-click or Shift+F for text starting with it |
+| Alt+Enter or ⛶ | Toggle full screen. Esc also leaves it (a cell editor's Esc only saves the cell). Nothing else ends it: redraws keep it, and a click on blank space does not open the raw text while full |
 
 **Formulas.** A cell starting with `=` is a formula, stored as the property text (`total:: =score*loss`). It reads other cells **of the same row** by column name, with `+ - * / % ^`, `&` (join text), comparisons and JS-style functions: `abs round floor ceil sqrt pow mod exp log log10 sin cos atan2 hypot min max sum avg median stdev count if and or not concat len upper lower`, plus `pi` and `e` Ranges such as `a:c` work inside functions. While typing a formula, **arrow keys or a click pick a cell** into it, as in Excel. A bad formula shows `#ERR` with the reason on hover.
 
@@ -161,11 +165,14 @@ Works with Logseq 0.10.x (Markdown/file graphs).
 ブロックのプロパティを、型つきの表・散布図・棒グラフにします。書いたその場で見られます。
 
 - `/DQ table` `/DQ scatter` `/DQ bar` でマクロを挿入。クエリは `#experiment seed==0 x:score y:loss color:seed` のように書きます（詳細は上の英語の表）。
+- 行に `/DQscatter #tips` とだけ書いてブロックを抜ける（その行で Enter・Esc・他所をクリック）と `{{renderer :DQscatter, #tips}}` に変わります。
+- セル中の `#tag`・`[[ページ]]` はページへ、`https://…` はブラウザで開くリンクになります。
 - **表は表計算ソフトのように使えます。** セルをクリックすると矢印キー・Tab・Enter で移動、そのまま打てば編集、Delete で消去。ドラッグで範囲選択し、Ctrl+C でコピー（Excel / スプレッドシートにセルとして貼れます）。Ctrl+V で貼り付け、画像も貼れます。
 - **数式**: セルを `=` で始めると数式（例 `=score*loss`）。同じ行のセルを列名で参照でき、`sum` `avg` `round` `if` などの関数が使えます。入力中に矢印キーやクリックでセルを指定できます。
 - **行の追加**: 最終行で Enter、または表の下の **+**。最後の行のブロックの直下に新しいブロックを作ります。
 - 行ラベルのクリックでブロックへ移動（全画面なら先に解除）、ダブルクリックでラベル（ブロック先頭行）の編集。
-- **`f`** または **⛶** で全画面の切替（Esc では戻りません）。行を右クリックすると **Delete row** が出ます。
+- **Alt+Enter** または **⛶** で全画面の切替。Esc でも抜けます（それ以外では切れません）。セル入力中の Esc は保存して抜けます（Logseq と同じ）。表で Esc を押すとマクロのブロックが選ばれ、そこで **→** を押すと表に戻ります。行を右クリックすると **Delete row** が出ます。
+- **Cols▾** のチェックはその場で表示に効き、メニューを閉じる（外を押す）と `hide:` にまとめて書き込みます。scatter は `y:loss,score` のように Y を複数選べます。
 - 属性名が `power--w` のように `--` を含めば、その後ろを単位として認識します（無ければ `-`、無次元。Logseq は `[]` や空白を拒否するため）。
 - `by:` を使わないとき、ブロックのラベルは親ブロックの文字列になります（`## CheckItem1` の子 `id:: abc` → `CheckItem1`）。
 - 注意: xlsx ファイルそのものはクリップボードに載せられないため、HTML 表とタブ区切りテキストでコピーします。貼り付けた画像は `assets/` に保存できず、セル内の `data:` URL として保持されます。
@@ -175,11 +182,14 @@ Works with Logseq 0.10.x (Markdown/file graphs).
 把带属性的块变成带类型的表格、散点图或柱状图，就在你写的地方显示。
 
 - 用 `/DQ table`、`/DQ scatter`、`/DQ bar` 插入宏。查询写法如 `#experiment seed==0 x:score y:loss color:seed`（详见上面英文表格）。
+- 在一行只写 `/DQscatter #tips` 并离开块（在该行按 Enter、Esc 或点击别处），会变成 `{{renderer :DQscatter, #tips}}`。
+- 单元格中的 `#tag`、`[[页面]]` 可跳转到页面，`https://…` 在浏览器中打开。
 - **表格像电子表格一样使用**：点击单元格后，方向键 / Tab / Enter 移动，直接输入即编辑，Delete 清除。拖动选择区域，Ctrl+C 复制（可作为单元格粘贴到 Excel / 表格软件），Ctrl+V 粘贴，也可粘贴图片。
 - **公式**：以 `=` 开头（如 `=score*loss`），可按列名引用同一行的其他单元格，支持 `sum`、`avg`、`round`、`if` 等函数。输入公式时可用方向键或点击选取单元格。
 - **添加行**：在最后一行按 Enter，或点击表格下方的 **+**，会在最后一行所在块的下方新建一个块。
 - 点击行标签跳转到块（全屏时先退出），双击可重命名。
-- **`f`** 或 **⛶** 切换全屏（Esc 不再退出）。右键点击行可 **Delete row**。
+- **Alt+Enter** 或 **⛶** 切换全屏，Esc 也可退出（其他情况下不会退出）。编辑单元格时 Esc 会保存并退出（与 Logseq 一致）。在表格中按 Esc 会选中宏所在的块，再按 **→** 回到表格。右键点击行可 **Delete row**。
+- **Cols▾** 的勾选立即生效，关闭菜单（或点击外部）时一并写入 `hide:`。散点图可选多个 Y，如 `y:loss,score`。
 - 属性名如 `power--w`，`--` 之后视为单位 `W`（没有则为 `-`，无量纲；因为 Logseq 不接受 `[]` 和空格）。
 - 不使用 `by:` 时，块的标签为其父块的文本（`## CheckItem1` 下的 `id:: abc` 显示为 `CheckItem1`）。
 - 说明：浏览器剪贴板无法携带 xlsx 文件，因此以 HTML 表格和制表符文本复制；粘贴的图片无法写入 `assets/`，以 `data:` URL 保存在单元格中。

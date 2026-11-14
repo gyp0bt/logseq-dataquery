@@ -114,13 +114,41 @@ export function toCsv(result: QueryResult, by?: string, hide: string[] = []): st
   return lines.map((l) => l.map(csvCell).join(',')).join('\r\n');
 }
 
+// Stand-in columns for a scatter of several Y columns. Property keys are lower-cased when read,
+// so names with capitals never meet a real one.
+const Y_SERIES = 'Y';
+const Y_VALUE = 'Y value';
+
+/**
+ * Several Y columns on one scatter: each row turns into one row per Y column it holds, with that
+ * value under `Y value` and the column (and its `color:` value, if any) under `Y`, which colours the
+ * series and names them in the legend (`Y = loss`, `Y = loss · seed 1`).
+ */
+function multiY(rows: Row[], ys: string[], color: string | undefined, types: Record<string, ValueType>): { rows: Row[]; types: Record<string, ValueType> } {
+  const out: Row[] = [];
+  for (const y of ys)
+    for (const r of rows) {
+      const v = r.values[y];
+      if (v === undefined) continue;
+      const c = color !== undefined ? r.values[color] : undefined;
+      out.push({ ...r, values: { ...r.values, [Y_SERIES]: c === undefined ? y : `${y} · ${color} ${c}`, [Y_VALUE]: v } });
+    }
+  // The 1.00 line of a ratio axis holds only when every Y column is a ratio.
+  const ratio = ys.every((k) => types[k] === 'ratio');
+  return { rows: out, types: { ...types, [Y_SERIES]: 'category', [Y_VALUE]: ratio ? 'ratio' : 'number' } };
+}
+
 /** The chart of a view, or null for a table or when its axes cannot be chosen. */
 export function chartOf(d: ViewData, opts: ChartOpts = {}): Chart | null {
   const { kind, query: q, result: res } = d;
   const { x, ys, color } = res.axes;
   if (kind === 'table' || !x || !ys.length) return null;
-  if (kind === 'scatter')
-    return scatterSvg(res.chartRows ?? res.rows, { x, y: ys[0], color, labels: q.labels, err: q.err }, res.types, q.by, opts);
+  if (kind === 'scatter') {
+    const rows = res.chartRows ?? res.rows;
+    if (ys.length < 2) return scatterSvg(rows, { x, y: ys[0], color, labels: q.labels, err: q.err }, res.types, q.by, opts);
+    const m = multiY(rows, ys, color, res.types);
+    return scatterSvg(m.rows, { x, y: Y_VALUE, color: Y_SERIES, labels: q.labels, err: q.err, yTitle: ys.join(', ') }, m.types, undefined, opts);
+  }
   // With `x:` or `color:` on the `by` key each bar is one `by` value; it spans that value's blocks
   // (unmerged), so the whisker shows their min–max instead of a single merged row.
   const rows = q.by && (x === q.by || color === q.by) ? res.chartRows ?? res.rows : res.rows;
@@ -201,7 +229,7 @@ function sideHtml(inp: InlineInput, q: Query, res: QueryResult): string {
   const numeric = cols.filter((k) => isAxisNumeric(typeOf(res.types, k)));
   if (inp.kind === 'scatter') {
     html += select(uuid, 'x', 'X', numeric, res.axes.x);
-    html += select(uuid, 'y', 'Y', numeric, res.axes.ys[0]);
+    html += yChips(uuid, q, res.axes.ys, numeric);
     // Without `color:` the points group and colour by `by:`; the blank choice says so.
     html += select(uuid, 'color', 'Color', cols, res.axes.color, q.by ? `by: ${q.by}` : 'none');
     html += errToggle(uuid, 'bar', q.err === 'bar', '±', 'Pool groups: mean and min–max error bars');

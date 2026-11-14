@@ -1,5 +1,5 @@
 import { dragAxis, formatTick, legendHtml, type ChartOpts, type Domain } from '../core/chart';
-import { parseQuery } from '../core/dsl';
+import { parseQuery, toggleHidden } from '../core/dsl';
 import { chartOf, errorHtml, tableToggleText, toCsv, type ViewData } from '../core/view';
 import { Grid } from './grid';
 import { TableTools, type TableDeps } from './tableTools';
@@ -7,6 +7,18 @@ import { TableTools, type TableDeps } from './tableTools';
 export interface InteractDeps extends Pick<TableDeps, 'saveCell' | 'saveTitle' | 'addColumn' | 'addRow' | 'setImg'> {
   /** Go to a block. */
   jump?(uuid: string): Promise<void>;
+  /** The query of a macro as its view last drew it. */
+  dslOf?(uuid: string): string | undefined;
+  /** Draw a view with `dsl` without writing it (undefined: back to the macro's own). */
+  preview?(uuid: string, dsl: string | undefined): void;
+  /** Esc left a table: select its macro block in Logseq. */
+  selectBlock?(uuid: string): void;
+  /** → moved from a selected macro block into its table: drop Logseq's block selection. */
+  clearSelection?(): void;
+  /** Open a page (a `#tag` or `[[page]]` link in a cell). */
+  openPage?(name: string): Promise<void>;
+  /** Open an http(s) URL outside Logseq. */
+  openUrl?(url: string): Promise<void>;
   /** Delete the block(s) of table row `index` of a macro. */
   deleteRow?(macroUuid: string, index: number): Promise<void>;
   /** Write a valid query back into the macro. */
@@ -77,6 +89,8 @@ export class Interact {
   private opened = new Set<string>();
   /** Macro blocks whose Cols ▾ list is open, so a repaint after a tick keeps it open. */
   private colsOpen = new Set<string>();
+  /** Cols ▾ ticks not written yet, per macro: the query they make. Written once when the menu closes. */
+  private colsDraft = new Map<string, string>();
   private table: TableTools;
   private grid: Grid;
   /** Macro blocks whose view fills the window. */
@@ -95,7 +109,9 @@ export class Interact {
 
   constructor(private doc: Document, private deps: InteractDeps) {
     this.table = new TableTools(doc, { ...deps, addRow: (m) => this.grid.addRowFor(m) });
-    this.grid = new Grid(doc, deps, this.table, (tbl) => this.keyFull(tbl.closest<HTMLElement>('.dq')));
+    this.grid = new Grid(doc, deps, this.table, (tbl) => this.keyFull(tbl.closest<HTMLElement>('.dq')), (tbl) => {
+      this.leaveFull(tbl.closest<HTMLElement>('.dq'));
+    });
   }
 
   install(): () => void {
@@ -106,6 +122,7 @@ export class Interact {
       ['mousedown', (e) => this.onMouseDown(e as MouseEvent), true],
       ['focusout', (e) => this.onFocusOut(e as FocusEvent), true],
       ['click', (e) => this.onClick(e as MouseEvent), true],
+      ['change', (e) => this.onChange(e), true],
       ['dblclick', (e) => this.onDblClick(e as MouseEvent), true],
       ['contextmenu', (e) => this.onContext(e as MouseEvent), true],
       ['mousemove', (e) => this.grid.onMouseMove(e as MouseEvent), true],
@@ -212,11 +229,6 @@ export class Interact {
   }
 
   /** Whether the view of `uuid` fills the window. */
-  /** The view is gone from the page (raw-text editing): full screen does not wait for it to come back. */
-  leaveFullOf(uuid: string): void {
-    this.full.delete(uuid);
-  }
-
   isFull(uuid: string): boolean {
     return this.full.has(uuid);
   }
@@ -250,6 +262,11 @@ export class Interact {
   /** Window capture: events aimed at one of our fields are handled here and go no further. */
   private onMouseDown(e: MouseEvent): void {
     this.pressed = e.target as Element | null;
+    // A press outside an open Cols ▾ menu with unwritten ticks writes them.
+    for (const uuid of [...this.colsDraft.keys()]) {
+      const menu = this.pressed?.closest?.<HTMLElement>('.dq-cols');
+      if (menu?.closest<HTMLElement>('.dq')?.dataset.macro !== uuid) this.commitCols(uuid);
+    }
     // A press on a table cell may open a cell editor (double-click, `+`): leave another block's raw
     // editing now, while its textarea still has the focus, as a press on a field does.
     if (this.pressed?.closest?.(TABLE_CELLS)) this.deps.leaveEditing?.();
@@ -273,18 +290,37 @@ export class Interact {
     if (tbl && GRID_EVENTS.has(e.type)) {
       if (e.type === 'keydown') {
         this.grid.onKey(e as KeyboardEvent, tbl);
-        if (['Escape', 'Enter', 'Tab', 'f'].includes((e as KeyboardEvent).key)) this.swallowKeyUp = (e as KeyboardEvent).key;
+        if (['Escape', 'Enter', 'Tab'].includes((e as KeyboardEvent).key)) this.swallowKeyUp = (e as KeyboardEvent).key;
       } else if (e.type === 'copy' || e.type === 'cut') this.grid.onCopy(e as ClipboardEvent, tbl, e.type === 'cut');
       else if (e.type === 'paste') this.grid.onPaste(e as ClipboardEvent, tbl);
       return stopAll(e);
     }
-    // `f` toggles full screen from anywhere in a view (or from the page body while one is full).
+    // Alt+Enter toggles full screen from anywhere in a view (or from the page body while one is full).
     const k = e as KeyboardEvent;
-    if (e.type === 'keydown' && k.key === 'f' && !k.ctrlKey && !k.metaKey && !k.altKey && !k.shiftKey && !t?.closest?.(FIELD_SELECTOR)) {
+    if (e.type === 'keydown' && k.key === 'Enter' && k.altKey && !k.ctrlKey && !k.metaKey && !k.shiftKey && !t?.closest?.(FIELD_SELECTOR)) {
       const view = t?.closest?.<HTMLElement>('.dq') ?? this.doc.querySelector<HTMLElement>('.dq-full');
       if (view) {
         this.keyFull(view);
-        this.swallowKeyUp = 'f';
+        this.swallowKeyUp = 'Enter';
+        return stopAll(e);
+      }
+    }
+    // Esc outside a field leaves a full-screen view (the image overlay took its Esc above).
+    if (e.type === 'keydown' && k.key === 'Escape' && !t?.closest?.(FIELD_SELECTOR)) {
+      const view = this.doc.querySelector<HTMLElement>('.dq-full');
+      if (view) {
+        this.toggleFull(view);
+        this.swallowKeyUp = 'Escape';
+        return stopAll(e);
+      }
+    }
+    // → on a selected macro block (Logseq's block selection, not raw editing) goes into its table.
+    if (e.type === 'keydown' && k.key === 'ArrowRight' && !k.ctrlKey && !k.metaKey && !k.altKey && !k.shiftKey && !t?.closest?.('input, textarea, select, [contenteditable="true"]')) {
+      const into = this.selectedTable();
+      if (into) {
+        this.deps.clearSelection?.();
+        this.grid.enter(into);
+        this.swallowKeyUp = 'ArrowRight';
         return stopAll(e);
       }
     }
@@ -296,6 +332,16 @@ export class Interact {
     if (e.type === 'mousedown' && inField) this.deps.leaveEditing?.();
     if (e.type === 'keydown') this.onKey(e as KeyboardEvent);
     stopAll(e);
+  }
+
+  /** The table of the one block Logseq has selected, when that block is a macro block showing one. */
+  private selectedTable(): HTMLElement | null {
+    const sel = this.doc.querySelectorAll<HTMLElement>('.ls-block.selected');
+    if (sel.length !== 1) return null;
+    // Its own view, not one of a child block (child blocks are nested inside it).
+    for (const tbl of sel[0].querySelectorAll<HTMLElement>('.dq-tbl[tabindex]'))
+      if (tbl.closest('.ls-block') === sel[0]) return tbl;
+    return null;
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -354,6 +400,13 @@ export class Interact {
       e.stopPropagation();
       return;
     }
+    const link = t?.closest?.<HTMLElement>('.dq-tbl a.dq-page, .dq-tbl a.dq-url');
+    if (link) {
+      // The cell's own click (focus, Logseq's block editor) and the browser's navigation stay off.
+      e.preventDefault();
+      e.stopPropagation();
+      return this.linkClick(link);
+    }
     if (this.table.onClick(e)) return;
     const label = t?.closest?.<HTMLElement>('.dq-tbl td[data-label]');
     if (label && !label.querySelector('input')) return this.labelClick(label);
@@ -381,6 +434,23 @@ export class Interact {
     this.jumpTimer = setTimeout(() => {
       this.leaveFull(view);
       this.deps.jump!(uuid).catch((err) => this.deps.report(err));
+    }, LABEL_CLICK_MS);
+  }
+
+  /**
+   * A click on a link in a cell opens its page or URL, after the same beat as a row label so a
+   * double-click still edits the cell. A full-screen view is left first, as for a label.
+   */
+  private linkClick(a: HTMLElement): void {
+    const view = a.closest<HTMLElement>('.dq');
+    const name = a.dataset.page;
+    const href = a.dataset.href;
+    const open = name !== undefined ? this.deps.openPage && (() => this.deps.openPage!(name)) : href !== undefined ? this.deps.openUrl && (() => this.deps.openUrl!(href)) : undefined;
+    if (!open) return;
+    clearTimeout(this.jumpTimer);
+    this.jumpTimer = setTimeout(() => {
+      if (name !== undefined) this.leaveFull(view);
+      open().catch((err) => this.deps.report(err));
     }, LABEL_CLICK_MS);
   }
 
@@ -442,7 +512,44 @@ export class Interact {
     det.open = !det.open;
     if (!uuid) return;
     if (det.open) this.colsOpen.add(uuid);
-    else this.colsOpen.delete(uuid);
+    else {
+      this.colsOpen.delete(uuid);
+      this.commitCols(uuid);
+    }
+  }
+
+  /**
+   * A tick in Cols ▾ only redraws the view; the macro is written once, when the menu closes (or a
+   * press lands outside it). Writing on every tick made Logseq redraw the block each time, which
+   * threw the page back to the top and left the menu hard to work through.
+   */
+  private onChange(e: Event): void {
+    const box = e.target as HTMLInputElement | null;
+    if (!box?.matches?.('.dq-cols input[type="checkbox"]')) return;
+    const uuid = box.dataset.macro;
+    const col = box.dataset.col;
+    if (!uuid || !col || !this.deps.preview) return;
+    // Logseq's `data-on-change` would write it at once.
+    e.stopPropagation();
+    const dsl = this.colsDraft.get(uuid) ?? this.deps.dslOf?.(uuid);
+    if (dsl === undefined) return this.deps.report(new Error('The view has not finished drawing yet.'));
+    const next = toggleHidden(dsl, col);
+    this.colsDraft.set(uuid, next);
+    this.deps.preview(uuid, next);
+  }
+
+  private commitCols(uuid: string): void {
+    const dsl = this.colsDraft.get(uuid);
+    if (dsl === undefined) return;
+    this.colsDraft.delete(uuid);
+    // The draft stays on screen until the macro holds it, so the view does not flick back.
+    this.deps.submit(uuid, dsl).then(
+      () => this.deps.preview?.(uuid, undefined),
+      (err) => {
+        this.deps.preview?.(uuid, undefined);
+        this.deps.report(err);
+      },
+    );
   }
 
   /** The table under a chart folds behind a one-line toggle; the choice is kept per block. */
@@ -496,7 +603,7 @@ export class Interact {
   }
 
   /**
-   * `f` toggles, but a held or mashed key must not flip it back and forth (and let the stray presses
+   * Alt+Enter toggles, but a held or mashed key must not flip it back and forth (and let the stray presses
    * reach Logseq): presses within FULL_KEY_MS of the last toggle are swallowed without toggling.
    */
   private keyFull(view: HTMLElement | null): void {
@@ -506,7 +613,7 @@ export class Interact {
     this.toggleFull(view);
   }
 
-  /** The view fills the window (⛶ or `f` toggles). A chart's folded table is opened, since it is what fills it. */
+  /** The view fills the window (⛶ or Alt+Enter toggles). A chart's folded table is opened, since it is what fills it. */
   private toggleFull(view: HTMLElement | null): void {
     const uuid = view?.dataset.macro;
     if (!view || !uuid) return;
@@ -528,9 +635,11 @@ export class Interact {
   /** True when the view was in full screen. */
   private leaveFull(view: HTMLElement | null): boolean {
     const uuid = view?.dataset.macro;
-    if (!view || !uuid || !this.full.delete(uuid)) return false;
+    if (!view || !uuid) return false;
+    // The screen and the remembered set may disagree after a repaint; either one counts.
+    const was = this.full.delete(uuid) || view.classList.contains('dq-full');
     view.classList.remove('dq-full');
-    return true;
+    return was;
   }
 
   private copyCsv(btn: HTMLElement): void {

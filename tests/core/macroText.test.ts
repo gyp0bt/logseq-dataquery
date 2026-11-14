@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMacro, findMacro, MACRO_KINDS, replaceMacro } from '../../src/core/macroText';
+import { buildMacro, expandInline, findMacro, isInlineLine, MACRO_KINDS, replaceMacro } from '../../src/core/macroText';
 
 describe('macro text', () => {
   const content = 'before {{renderer :DQscatter, #[[a b]] combine==none,mean x:a}} after\nk:: v';
@@ -21,5 +21,26 @@ describe('macro text', () => {
     const old = findMacro(content)!.macro;
     expect(replaceMacro(content, old, 'scatter', '#t')).toBe('before {{renderer :DQscatter, #t}} after\nk:: v');
     expect(replaceMacro(content, '{{renderer :DQscatter, gone}}', 'scatter', '#t')).toBeNull();
+  });
+});
+
+describe('expandInline', () => {
+  it('turns a /DQ line into its macro', () => {
+    expect(expandInline('/DQscatter #tips')).toBe('{{renderer :DQscatter, #tips}}');
+    expect(expandInline('/dq table')).toBe('{{renderer :DQtable}}');
+    expect(expandInline('/DQ bar #a x:k ')).toBe('{{renderer :DQbar, #a x:k}}');
+    expect(expandInline('title\n  /DQtable #t\nk:: v')).toBe('title\n  {{renderer :DQtable, #t}}\nk:: v');
+  });
+  it('leaves other text alone', () => {
+    expect(expandInline('see /DQscatter #tips')).toBeNull();
+    expect(expandInline('/DQscatterx')).toBeNull();
+    expect(expandInline('/DQ')).toBeNull();
+    expect(expandInline('```\n/DQtable #t\n```')).toBeNull();
+  });
+  it('finds the caret line', () => {
+    const t = 'a\n/DQbar #x\nb';
+    expect(isInlineLine(t, 4)).toBe(true);
+    expect(isInlineLine(t, 1)).toBe(false);
+    expect(isInlineLine(t, t.length)).toBe(false);
   });
 });

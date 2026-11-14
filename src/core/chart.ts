@@ -3,7 +3,8 @@ import { esc } from './html';
 import { canonical, rowLabel, type Row } from './rows';
 import { cellMean, cellStats, compareValues, toList, type ValueType } from './types';
 
-export interface ScatterSpec { x: string; y: string; color?: string; labels: boolean; err: ErrMode }
+/** `yTitle` names the y axis when `y` is a stand-in column (several Y columns drawn as one). */
+export interface ScatterSpec { x: string; y: string; color?: string; labels: boolean; err: ErrMode; yTitle?: string }
 export interface BarSpec { x: string; ys: string[]; color?: string }
 
 /** `trace` names a series a double-click can hide; `off` greys a hidden one. */
@@ -181,7 +182,8 @@ export function scatterSvg(rows: Row[], plot: ScatterSpec, types: Record<string,
   const ckey = plot.color ?? by;
   // Without `err:` every row is drawn as it is; `±` and `▤` pool each group per x.
   const groups = scatterGroups(rows, plot, ckey, plot.err !== 'off');
-  if (!groups.length) return empty(`No rows have numeric ${plot.x} and ${plot.y}.`);
+  const yName = plot.yTitle ?? plot.y;
+  if (!groups.length) return empty(`No rows have numeric ${plot.x} and ${yName}.`);
   const traceOf = (g: ScatterGroup) => (ckey ? `${ckey} = ${catOf(g.first.values[ckey])}` : undefined);
   const hidden = new Set(opts.hidden ?? []);
   const shown = groups.filter((g) => !hidden.has(traceOf(g) ?? ''));
@@ -217,7 +219,7 @@ export function scatterSvg(rows: Row[], plot: ScatterSpec, types: Record<string,
   if (ry && Y(1) >= T && Y(1) <= T + PH) g += `<line class="dq-ref" x1="${L}" y1="${f1(Y(1))}" x2="${L + PW}" y2="${f1(Y(1))}"/>`;
   const ty0 = f1(16 * s);
   g += `<text class="dq-title" x="${L + PW / 2}" y="${f1(H - 10 * s)}" text-anchor="middle">${axisTitle(plot.x, types[plot.x])}</text>`;
-  g += `<text class="dq-title" x="${ty0}" y="${T + PH / 2}" text-anchor="middle" transform="rotate(-90 ${ty0} ${T + PH / 2})">${axisTitle(plot.y, types[plot.y])}</text>`;
+  g += `<text class="dq-title" x="${ty0}" y="${T + PH / 2}" text-anchor="middle" transform="rotate(-90 ${ty0} ${T + PH / 2})">${plot.yTitle !== undefined ? esc(plot.yTitle) : axisTitle(plot.y, types[plot.y])}</text>`;
 
   const legend: LegendItem[] = [];
   const colorOf = new Map<string, string>();
@@ -271,7 +273,7 @@ export function scatterSvg(rows: Row[], plot: ScatterSpec, types: Record<string,
     for (const p of gr.pts) {
       if (!inside(p.x, p.mean)) continue;
       const n = p.ys.length;
-      const tip = [gr.label, `${plot.x}: ${p4(p.x)}`, n >= 2 ? `${plot.y}: mean ${p4(p.mean)} · min ${p4(p.min)} · max ${p4(p.max)} · n=${n}` : `${plot.y}: ${p4(p.mean)}`];
+      const tip = [gr.label, `${plot.x}: ${p4(p.x)}`, n >= 2 ? `${yName}: mean ${p4(p.mean)} · min ${p4(p.min)} · max ${p4(p.max)} · n=${n}` : `${yName}: ${p4(p.mean)}`];
       // A pixel-sized chart gets hover boxes from the host script; the scaled one falls back to <title>.
       const title = b.sized ? '' : `<title>${esc(tip.join('\n'))}</title>`;
       dots += `<circle class="dq-pt" cx="${f1(X(p.x))}" cy="${f1(Y(p.mean))}" r="${f1(3 * s).replace(/\.0$/, '')}" fill="${fill}"${traceAttr(traceOf(gr))} data-uuid="${esc(p.uuid)}"${key} data-tip="${esc(tip.join('\n'))}">${title}</circle>`;
@@ -289,7 +291,7 @@ export function scatterSvg(rows: Row[], plot: ScatterSpec, types: Record<string,
   if (prefix) legend.push({ label: `labels omit '${prefix}'`, color: '', shape: 'none' });
   // `data-step` is the tick step of each axis, so the host can format typed ranges like the ticks.
   const data = ` data-dom="${[x0, x1, y0, y1].join(',')}" data-box="${[L, T, PW, PH].join(',')}" data-step="${step(tx)},${step(ty)}"`;
-  return { html: frame(b, g, `${plot.y} against ${plot.x}`, data), legend };
+  return { html: frame(b, g, `${yName} against ${plot.x}`, data), legend };
 }
 
 /** Fewest pixels an axis end may be pulled to, so a drag cannot flip or blow up the range. */

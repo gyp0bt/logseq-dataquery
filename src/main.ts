@@ -4,10 +4,11 @@ import type { AssetScheme } from './core/images';
 import { buildMacro, LEGACY_TYPE, MACRO_KINDS } from './core/macroText';
 import { renderLegacy } from './core/view';
 import { newRowFor } from './core/newRow';
-import { applyControl, errorText, deleteBlocks, insertRow, jumpTo, saveTitle, readMacro, saveCell, saveDsl, setImgInMacro, type SetEvent } from './host/actions';
+import { applyControl, errorText, deleteBlocks, expandInlineBlock, insertRow, jumpTo, saveTitle, readMacro, saveCell, saveDsl, setImgInMacro, type SetEvent } from './host/actions';
 import type { LogseqLike } from './host/api';
 import { Engine } from './host/engine';
 import { InlineViews } from './host/inline';
+import { installInlineSlash } from './host/inlineSlash';
 import { FIELD_SELECTOR, Interact } from './host/interact';
 import inlineCss from './style/inline.css?raw';
 import tokensCss from './style/tokens.css?raw';
@@ -60,6 +61,8 @@ async function main(): Promise<void> {
   }
   /** Columns added with the table's `+`, per macro block, until a value is written. */
   const extra = new Map<string, string[]>();
+  /** Cols ▾ ticks drawn but not written yet, per macro block. */
+  const drafts = new Map<string, string>();
 
   let interact: Interact | undefined;
   const provide = (slot: string, html: string) => {
@@ -89,10 +92,16 @@ async function main(): Promise<void> {
     graphPath: () => graphPath,
     assetScheme: () => assetScheme,
     extraCols: (uuid) => extra.get(uuid) ?? [],
+    draft: (uuid) => drafts.get(uuid),
     full: (uuid) => interact?.isFull(uuid) ?? false,
-    gone: (uuid) => interact?.leaveFullOf(uuid),
   });
 
+  const leaveEditing = () => {
+    // Synchronous, in Logseq's own window: the async plugin API would arrive after the focus moved.
+    const host = parent as unknown as { logseq?: { api?: { exit_editing_mode?: (select: boolean) => void } } };
+    const active = parent.document.activeElement;
+    if (active?.matches('textarea') && active.id.startsWith('edit-block')) host.logseq?.api?.exit_editing_mode?.(false);
+  };
   try {
     interact = new Interact(parent.document, {
       submit: setDslFromView,
@@ -116,6 +125,20 @@ async function main(): Promise<void> {
         return uuid;
       },
       jump: (uuid) => jumpTo(api, uuid).catch(report),
+      openPage: async (name) => {
+        try {
+          await logseq.App.pushState('page', { name });
+        } catch (e) {
+          throw new Error(`Could not open the page "${name}".`, { cause: e });
+        }
+      },
+      openUrl: async (url) => {
+        try {
+          await logseq.App.openExternalLink(url);
+        } catch (e) {
+          throw new Error(`Could not open ${url}.`, { cause: e });
+        }
+      },
       saveTitle: (block, title) => saveTitle(api, block, title),
       deleteRow: async (macro, index) => {
         const row = views.view(macro)?.result.rows[index];
@@ -130,15 +153,27 @@ async function main(): Promise<void> {
         extra.set(uuid, [...(extra.get(uuid) ?? []), key]);
         void views.refreshAll().catch(report);
       },
-      leaveEditing: () => {
-        // Synchronous, in Logseq's own window: the async plugin API would arrive after the focus moved.
-        const host = parent as unknown as { logseq?: { api?: { exit_editing_mode?: (select: boolean) => void } } };
-        const active = parent.document.activeElement;
-        if (active?.matches('textarea') && active.id.startsWith('edit-block')) host.logseq?.api?.exit_editing_mode?.(false);
+      leaveEditing,
+      dslOf: (uuid) => views.dslOf(uuid),
+      preview: (uuid, dsl) => {
+        if (dsl === undefined) drafts.delete(uuid);
+        else drafts.set(uuid, dsl);
+        void views.refreshAll().catch(report);
+      },
+      selectBlock: (uuid) => void logseq.Editor.selectBlock(uuid).catch((e) => report(new Error('Could not select the query block.', { cause: e }))),
+      clearSelection: () => {
+        // Only the highlight: keys typed in the focused table never reach Logseq (the window-capture shield).
+        // `clear_selected_blocks` is not in the typed plugin API, so it is called only when present.
+        const host = parent as unknown as { logseq?: { api?: { clear_selected_blocks?: () => void } } };
+        host.logseq?.api?.clear_selected_blocks?.();
       },
     });
     const off = interact.install();
-    logseq.beforeunload(async () => off());
+    const offSlash = installInlineSlash(parent.document, { convert: (uuid) => expandInlineBlock(api, uuid), leaveEditing, report });
+    logseq.beforeunload(async () => {
+      off();
+      offSlash();
+    });
   } catch (e) {
     report(new Error('Data query cannot reach the Logseq window: the query field, chart tools and CSV copy will not respond.', { cause: e }));
   }
@@ -187,8 +222,9 @@ async function main(): Promise<void> {
   logseq.provideModel({
     dqJump: (e: { dataset: { uuid: string } }) => jumpTo(api, e.dataset.uuid).catch(report),
     dqNoop: () => {},
+    // In full screen a click on blank space does nothing: raw editing would take the view away.
     dqEdit: (e: { dataset: { macro: string } }) =>
-      logseq.Editor.editBlock(e.dataset.macro).catch((err) => report(new Error('Could not open the block for editing.', { cause: err }))),
+      interact?.isFull(e.dataset.macro) ? undefined : logseq.Editor.editBlock(e.dataset.macro).catch((err) => report(new Error('Could not open the block for editing.', { cause: err }))),
     dqSet: (e: SetEvent) => applyControl(api, e).catch(report),
   });
 

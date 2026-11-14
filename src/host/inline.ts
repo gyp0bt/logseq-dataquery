@@ -28,10 +28,10 @@ export interface InlineHooks {
   assetScheme?(): AssetScheme;
   /** Columns added with the table's `+` that no block holds yet. */
   extraCols?(uuid: string): string[];
+  /** A query drawn in place of the macro's own, not written yet (Cols ▾ ticks). */
+  draft?(uuid: string): string | undefined;
   /** Whether the view of `uuid` fills the window. */
   full?(uuid: string): boolean;
-  /** The macro's earlier view left the page (the block went back to raw text): nothing of it should come back. */
-  gone?(uuid: string): void;
 }
 
 /** Tracks rendered macro slots so DB changes can re-render them. */
@@ -52,8 +52,8 @@ export class InlineViews {
   async show(slot: string, uuid: string, kind: Kind, dsl: string): Promise<void> {
     for (const [old, info] of [...this.slots]) {
       if (old === slot || info.uuid !== uuid || this.exists(old)) continue;
+      // A view drawn again in a new slot keeps its full screen: only Esc, Alt+Enter or ⛶ leave it.
       this.slots.delete(old);
-      this.hooks.gone?.(uuid);
     }
     this.slots.set(slot, { uuid, kind, dsl, gen: 0 });
     await this.render(slot, false);
@@ -85,6 +85,12 @@ export class InlineViews {
     this.pending.clear();
   }
 
+  /** The query a macro's view was last drawn from (its draft, if any). */
+  dslOf(uuid: string): string | undefined {
+    for (const info of this.slots.values()) if (info.uuid === uuid) return this.hooks.draft?.(uuid) ?? info.dsl;
+    return undefined;
+  }
+
   async refreshAll(): Promise<void> {
     for (const slot of [...this.slots.keys()]) {
       if (!this.exists(slot)) this.slots.delete(slot);
@@ -103,7 +109,7 @@ export class InlineViews {
         console.warn('[dataquery] could not re-read the macro text; keeping the last query', e);
       }
     }
-    const dsl = info.dsl;
+    const dsl = this.hooks.draft?.(uuid) ?? info.dsl;
     let input: InlineInput;
     let view: ViewData | undefined;
     try {

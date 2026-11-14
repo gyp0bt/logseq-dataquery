@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { deleteBlocks, errorText, insertRow, jumpTo, saveTitle, readMacro, saveDsl, setSettingInMacro, toggleErrInMacro } from '../../src/host/actions';
+import { deleteBlocks, errorText, expandInlineBlock, insertRow, jumpTo, saveTitle, readMacro, saveDsl, setSettingInMacro, toggleErrInMacro } from '../../src/host/actions';
 import { fetchOrder, fetchTypeOverrides, toSourceBlock } from '../../src/host/collect';
 import { Engine } from '../../src/host/engine';
 import { InlineViews } from '../../src/host/inline';
@@ -77,6 +77,16 @@ describe('Engine', () => {
 });
 
 describe('actions', () => {
+  it('expands an inline /DQ line of a block into its macro', async () => {
+    const api = fakeLogseq({ P: [{ uuid: 'q', content: 'notes\n/DQscatter #tips' }, { uuid: 'r', content: 'plain' }] });
+    await expandInlineBlock(api, 'q');
+    expect((await api.Editor.getBlock('q')).content).toBe('notes\n{{renderer :DQscatter, #tips}}');
+    const spy = vi.spyOn(api.Editor, 'updateBlock');
+    spy.mockClear();
+    await expandInlineBlock(api, 'r');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('saveDsl rewrites the macro and refuses after a concurrent edit', async () => {
     const api = graph();
     const { macro, kind, dsl } = await readMacro(api, 'm');
@@ -148,18 +158,6 @@ describe('InlineViews', () => {
     provide.mockClear();
     await views.refreshAll();
     expect(provide).not.toHaveBeenCalled();
-  });
-  it('a view that left the page is reported gone when the macro is drawn again', async () => {
-    const gone = vi.fn();
-    const alive = new Set(['s1']);
-    const views = new InlineViews(new Engine(graph(), () => 'dataquery/types'), vi.fn(), (s) => alive.has(s), { gone });
-    await views.show('s1', 'm', 'table', '#work/nsb sort:gre');
-    await views.show('s1b', 'm', 'table', '#work/nsb sort:gre');
-    expect(gone).not.toHaveBeenCalled();
-    alive.delete('s1');
-    alive.add('s1b');
-    await views.show('s2', 'm', 'table', '#work/nsb sort:gre');
-    expect(gone).toHaveBeenCalledWith('m');
   });
   it('a slow older render does not overwrite a newer one', async () => {
     const real = new Engine(graph(), () => 'dataquery/types');

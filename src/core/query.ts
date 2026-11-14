@@ -94,8 +94,7 @@ export function defaultAxes(q: Query, kind: Kind, cols: string[], types: Record<
   if (kind === 'table') return axes;
   const numeric = cols.filter((k) => isAxisNumeric(typeOf(types, k)));
   if (kind === 'scatter') {
-    axes.ys = axes.ys.slice(0, 1);
-    axes.x ??= numeric.find((k) => k !== axes.ys[0]);
+    axes.x ??= numeric.find((k) => !axes.ys.includes(k));
     if (!axes.ys.length) axes.ys = numeric.filter((k) => k !== axes.x).slice(0, 1);
   } else {
     axes.x ??= cols.find((k) => ['category', 'string'].includes(typeOf(types, k)));

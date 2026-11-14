@@ -1,4 +1,5 @@
 import { esc } from './html';
+import { linkHtml } from './links';
 
 export interface CellImage { alt: string; src: string }
 export type CellPiece = { text: string } | { img: CellImage };
@@ -59,12 +60,12 @@ export function resolveImageSrc(src: string, graphPath: string | undefined, sche
   return null;
 }
 
-/** Cell HTML: escaped text, with images as lazy thumbnails (`img.dq-img`, opened larger on click). */
+/** Cell HTML: escaped text with links (see `linkHtml`), with images as lazy thumbnails (`img.dq-img`, opened larger on click). */
 export function cellHtml(text: string, graphPath: string | undefined, scheme: AssetScheme = 'file'): string {
   const pieces = imagePieces(text);
-  if (!pieces) return esc(text);
+  if (!pieces) return linkHtml(text);
   return pieces.map((p) => {
-    if ('text' in p) return esc(p.text);
+    if ('text' in p) return linkHtml(p.text);
     const url = resolveImageSrc(p.img.src, graphPath, scheme);
     if (url === null) return esc(`![${p.img.alt}](${p.img.src})`);
     return `<img class="dq-img" src="${esc(url)}" alt="${esc(p.img.alt)}" loading="lazy">`;

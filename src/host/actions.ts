@@ -1,5 +1,5 @@
 import { addY, parseQuery, removeY, setImg, setSetting, stepImg, toggleErr, toggleHidden, type Kind, type SettingName } from '../core/dsl';
-import { buildMacro, findMacro, replaceMacro } from '../core/macroText';
+import { buildMacro, expandInline, findMacro, replaceMacro } from '../core/macroText';
 import type { LogseqLike } from './api';
 
 /** Message plus the whole cause chain, for places that can only show text. */
@@ -26,6 +26,18 @@ export async function readMacro(api: LogseqLike, macroUuid: string): Promise<{ m
   const found = block ? findMacro(String(block.content)) : null;
   if (!found) throw new Error('The query block no longer contains a DQtable, DQscatter or DQbar macro.');
   return found;
+}
+
+/** Rewrite the `/DQscatter #tips` lines of a block into their macros; nothing when it has none. */
+export async function expandInlineBlock(api: LogseqLike, uuid: string): Promise<void> {
+  const block = await getBlock(api, uuid);
+  const next = block ? expandInline(String(block.content)) : null;
+  if (next === null) return;
+  try {
+    await api.Editor.updateBlock(uuid, next);
+  } catch (e) {
+    throw new Error('Could not write the query macro into the block.', { cause: e });
+  }
 }
 
 /** Rewrite the macro; refuses if the block no longer holds `oldMacro` (edited elsewhere). */

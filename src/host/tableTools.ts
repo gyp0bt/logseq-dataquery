@@ -233,9 +233,10 @@ export class TableTools {
     const cellIn = input.classList.contains('dq-cellin');
     if (e.key === 'Escape') {
       e.preventDefault();
-      const cell = ed.cell;
-      this.cancel();
-      if (cellIn) this.onEditEnd?.(cell, null);
+      // A cell: Esc saves and stays, as Esc leaves a Logseq block with its text kept. The new
+      // column's name field has nothing to save until Enter, so Esc drops it.
+      if (cellIn) this.finish(ed, null);
+      else this.cancel();
       return true;
     }
     if (cellIn && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -265,7 +266,7 @@ export class TableTools {
     return true;
   }
 
-  private finish(ed: Editing, move: Move): void {
+  private finish(ed: Editing, move: Move | null): void {
     const cell = ed.cell;
     this.saveCell(ed);
     this.onEditEnd?.(cell, move);
