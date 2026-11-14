@@ -9,6 +9,9 @@ export type SnippetKind = 'code' | 'image' | 'link';
  */
 export interface Snippet { kind: SnippetKind; index: number; id: string; text: string; lang?: string; block: string }
 
+/** A card: a tagged block that has no tagged parent, with its subtree and its `copies::` count. */
+export interface Card { root: CardNode; copies: number; seq: number; page: string }
+
 export const KIND_NAMES: Record<SnippetKind, string> = { code: 'コード', image: '画像', link: 'リンク' };
 
 const FENCE = /^\s*(```|~~~)\s*([^\s`]*)/;
@@ -33,10 +36,17 @@ function dedent(lines: string[]): string {
 }
 
 type Found = Omit<Snippet, 'index' | 'id' | 'block'>;
+/** A block's text cut into plain text and snippets, in order (the preview draws these, the copy counts them). */
+export type BlockPart = { text: string } | { snip: Found };
 
-/** The snippets of one block's text; a fence left open runs to the end of the block. */
-function blockSnippets(content: string): Found[] {
-  const out: Found[] = [];
+/** One block's text as parts; a fence left open runs to the end of the block; the `copies::` line is dropped. */
+export function blockParts(content: string): BlockPart[] {
+  const out: BlockPart[] = [];
+  const text = (t: string) => {
+    const last = out[out.length - 1];
+    if (last && 'text' in last) last.text += t;
+    else out.push({ text: t });
+  };
   const lines = content.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const open = FENCE.exec(lines[i]);
@@ -44,22 +54,34 @@ function blockSnippets(content: string): Found[] {
       const body: string[] = [];
       let j = i + 1;
       while (j < lines.length && !lines[j].trim().startsWith(open[1])) body.push(lines[j++]);
-      out.push({ kind: 'code', text: dedent(body), ...(open[2] ? { lang: open[2] } : {}) });
+      out.push({ snip: { kind: 'code', text: dedent(body), ...(open[2] ? { lang: open[2] } : {}) } });
       i = j;
       continue;
     }
     if (COPIES_LINE.test(lines[i])) continue;
-    for (const m of lines[i].matchAll(PIECE)) {
-      if (m[1]) out.push({ kind: 'image', text: m[1] });
-      else if (m[2]) out.push({ kind: 'link', text: m[2] });
-      // Sentence punctuation after a bare URL is not part of it.
-      else out.push({ kind: 'link', text: m[3].replace(/[.,;:!?)]+$/, '') });
+    const line = lines[i];
+    let last = 0;
+    for (const m of line.matchAll(PIECE)) {
+      const at = m.index ?? 0;
+      let whole = m[0];
+      let snip: Found;
+      if (m[1]) snip = { kind: 'image', text: m[1] };
+      else if (m[2]) snip = { kind: 'link', text: m[2] };
+      else {
+        // Sentence punctuation after a bare URL is not part of it.
+        whole = whole.replace(/[.,;:!?)]+$/, '');
+        snip = { kind: 'link', text: whole };
+      }
+      if (at > last) text(line.slice(last, at));
+      out.push({ snip });
+      last = at + whole.length;
     }
+    text(line.slice(last) + '\n');
   }
   return out;
 }
 
-function walk(n: CardNode, visit: (n: CardNode, depth: number) => void, depth = 0): void {
+export function walk(n: CardNode, visit: (n: CardNode, depth: number) => void, depth = 0): void {
   visit(n, depth);
   for (const c of n.children) walk(c, visit, depth + 1);
 }
@@ -68,7 +90,7 @@ function walk(n: CardNode, visit: (n: CardNode, depth: number) => void, depth = 
 export function cardSnippets(root: CardNode): Snippet[] {
   const out: Snippet[] = [];
   walk(root, (n) => {
-    for (const f of blockSnippets(n.content)) out.push({ ...f, index: out.length, id: snippetId(f.text), block: n.uuid });
+    for (const p of blockParts(n.content)) if ('snip' in p) out.push({ ...p.snip, index: out.length, id: snippetId(p.snip.text), block: n.uuid });
   });
   return out;
 }

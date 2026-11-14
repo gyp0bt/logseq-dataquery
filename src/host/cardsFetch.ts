@@ -1,9 +1,8 @@
-import { readCopies, type CardNode } from '../core/cards';
+import { readCopies, type Card, type CardNode } from '../core/cards';
 import type { LogseqLike } from './api';
 import { pick } from './collect';
 
-/** A card: a tagged block that has no tagged parent, with its subtree. */
-export interface Card { root: CardNode; copies: number; seq: number; page: string }
+export type { Card };
 
 /**
  * Blocks whose path refs (their own and their ancestors' tags) hold the page `ref`. Tagging a block

@@ -152,3 +152,53 @@
 .dq-menuitem:hover { background: var(--dq-code, #eee); }
 /* The header row stays at the top while the table scrolls. */
 .dq-tbl thead th { position: sticky; top: 0; z-index: 2; background: var(--dq-bg); box-shadow: inset 0 -1px 0 var(--dq-line); border-bottom: 0; }
+
+/* DQcards: list on the left, preview of the selected card on the right. */
+.dqc { display: block; box-sizing: border-box; width: 100%; container-type: inline-size; border: 1px solid var(--dq-line); border-radius: 8px; background: var(--dq-bg); color: var(--dq-fg); line-height: 1.5; margin: 4px 0; position: relative; outline: none; }
+.dqc:focus-visible { border-color: var(--dq-accent); }
+.dqc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 10px; border-bottom: 1px solid var(--dq-line); }
+.dqc-q, .dqc-filter { font: inherit; font-size: 0.9375em; color: var(--dq-fg); background: var(--dq-code); border: 1px solid transparent; border-radius: 5px; padding: 3px 8px; min-width: 0; }
+.dqc-q { flex: 2 1 200px; }
+.dqc-filter { flex: 1 1 120px; }
+.dqc-q:focus, .dqc-filter:focus { outline: none; border-color: var(--dq-accent); }
+.dqc-meta { font-size: 0.875em; color: var(--dq-muted); font-variant-numeric: tabular-nums; }
+.dqc-note { padding: 3px 10px; font-size: 0.875em; color: var(--dq-warn); background: var(--dq-warn-bg); }
+.dqc-err { padding: 6px 10px; color: var(--dq-fail); background: var(--dq-fail-bg); }
+.dqc-empty { padding: 12px 10px; color: var(--dq-muted); }
+.dqc-body { display: grid; grid-template-columns: minmax(0, 38%) minmax(0, 1fr); max-height: 70vh; }
+@container (max-width: 560px) { .dqc-body { grid-template-columns: minmax(0, 1fr); max-height: none; } .dqc-list { max-height: 40vh; border-right: 0; border-bottom: 1px solid var(--dq-line); } }
+.dqc-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; border-right: 1px solid var(--dq-line); }
+.dqc-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 6px 10px; border-bottom: 1px solid var(--dq-grid); cursor: pointer; margin: 0; }
+.dqc-row:hover { background: var(--dq-grid); }
+.dqc-row.sel { background: color-mix(in srgb, var(--dq-accent) 14%, transparent); box-shadow: inset 3px 0 0 var(--dq-accent); }
+.dqc-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.dqc-n { font-variant-numeric: tabular-nums; color: var(--dq-muted); }
+.dqc-k { grid-column: 1 / -1; font-size: 0.8125em; color: var(--dq-muted); }
+.dqc-pv { overflow-y: auto; padding: 8px 12px; min-width: 0; }
+.dqc-pv-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.dqc-pv-head b { flex: 1; min-width: 0; }
+.dqc-node { margin-left: calc(var(--dqc-depth) * 16px); padding: 2px 0; }
+.dqc-text { white-space: pre-wrap; }
+.dqc-snip { position: relative; border-radius: 5px; }
+.dqc-snip:focus { outline: 2px solid var(--dq-accent); outline-offset: 1px; }
+.dqc-code { display: block; background: var(--dq-code); margin: 4px 0; }
+.dqc-code pre { margin: 0; padding: 6px 34px 6px 8px; overflow-x: auto; white-space: pre; }
+.dqc-lang { position: absolute; right: 34px; top: 4px; font-size: 0.75em; color: var(--dq-muted); }
+.dqc-code > .dqc-copy { position: absolute; right: 4px; top: 4px; }
+.dqc-image { display: inline-block; }
+.dqc-image img { max-width: 100%; max-height: 240px; display: block; border-radius: 4px; }
+.dqc-image > .dqc-copy { position: absolute; right: 4px; top: 4px; }
+.dqc-link a { color: var(--dq-accent); }
+.dqc-copy, .dqc-whole { font: inherit; font-size: 0.8125em; color: var(--dq-fg); background: var(--dq-bg); border: 1px solid var(--dq-line); border-radius: 4px; padding: 0 6px; cursor: pointer; }
+.dqc-copy:hover, .dqc-whole:hover { border-color: var(--dq-accent); color: var(--dq-accent); }
+.dqc-link > .dqc-copy { margin-left: 4px; }
+.dqc-toast { position: absolute; right: 10px; bottom: 10px; padding: 4px 10px; border-radius: 5px; background: var(--dq-fg); color: var(--dq-bg); font-size: 0.875em; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.dqc-toast.show { opacity: 0.92; }
+/*
+ * Fallback for `:block-hidden-properties #{:copies}` in config.edn: hide the `copies::` row Logseq
+ * draws under a block. Targets the property row whose key link names `copies` (checked in the real
+ * app; see docs/manual-checks.md).
+ */
+.block-properties > div:has(> .page-property-key[data-ref="copies"]),
+.block-properties > div:has(> a.page-property-key[data-ref="copies"]) { display: none; }
+.block-properties:not(:has(> div:not([style*="display: none"]):not(:has(> .page-property-key[data-ref="copies"])))) { display: none; }
