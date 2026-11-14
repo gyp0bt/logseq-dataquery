@@ -50,3 +50,22 @@ export function clipboardImage(data: DataTransfer | null): File | null {
   for (const it of Array.from(data?.items ?? [])) if (it.kind === 'file' && it.type.startsWith('image/')) return it.getAsFile();
   return null;
 }
+
+/** The picture at `url` re-encoded as PNG, the one image type the clipboard takes everywhere. */
+export async function imageToPng(win: Window & typeof globalThis, url: string): Promise<Blob> {
+  const img = new win.Image();
+  img.crossOrigin = 'anonymous';
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error(`The picture could not be loaded: ${url}`));
+    img.src = url;
+  });
+  const canvas = win.document.createElement('canvas');
+  canvas.width = Math.max(1, img.naturalWidth);
+  canvas.height = Math.max(1, img.naturalHeight);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No 2D canvas to convert the picture with.');
+  ctx.drawImage(img, 0, 0);
+  return new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('The picture could not be encoded as PNG.'))), 'image/png'));
+}
